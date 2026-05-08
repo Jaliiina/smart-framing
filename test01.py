@@ -1,2 +1,4 @@
-print("Hello, World!")
-print("This is a test of the smart framing system.")
+from smart_framing import SmartFramer
+
+print('Smart Framing module ready.')
+print('Create framer: framer = SmartFramer()')
