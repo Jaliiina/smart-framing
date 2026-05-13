@@ -100,7 +100,7 @@ def run_baselines(
         try:
             sal_result = cropper.process_with_custom_weights(
                 item["image_path"],
-                {"saliency": 1.0, "aesthetic": 0.0, "composition": 0.0, "subject": 0.0, "technical": 0.0},
+                {"saliency": 1.0, "aesthetic": 0.0, "composition": 0.0, "subject": 0.0, "technical": 0.0, "area_prior": 0.0},
             )
             record["saliency_only_iou"] = round(bbox_iou(sal_result.best_bbox, gt), 4)
         except Exception:
@@ -112,7 +112,7 @@ def run_baselines(
         try:
             aes_result = cropper.process_with_custom_weights(
                 item["image_path"],
-                {"aesthetic": 1.0, "saliency": 0.0, "composition": 0.0, "subject": 0.0, "technical": 0.0},
+                {"aesthetic": 1.0, "saliency": 0.0, "composition": 0.0, "subject": 0.0, "technical": 0.0, "area_prior": 0.0},
             )
             record["aesthetic_only_iou"] = round(bbox_iou(aes_result.best_bbox, gt), 4)
         except Exception:
@@ -124,7 +124,7 @@ def run_baselines(
         try:
             yolo_result = cropper.process_with_custom_weights(
                 item["image_path"],
-                {"subject": 1.0, "aesthetic": 0.0, "saliency": 0.0, "composition": 0.0, "technical": 0.0},
+                {"subject": 1.0, "aesthetic": 0.0, "saliency": 0.0, "composition": 0.0, "technical": 0.0, "area_prior": 0.0},
             )
             record["yolo_only_iou"] = round(bbox_iou(yolo_result.best_bbox, gt), 4)
         except Exception:

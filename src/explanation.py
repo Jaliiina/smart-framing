@@ -70,6 +70,9 @@ class ExplanationGenerator:
         if sub_scores.composition >= 0.7:
             reasons.append(self.TEMPLATES["composition_good"])
 
+        if sub_scores.area_prior >= 0.7:
+            reasons.append("crop area is more focused")
+
         if sub_scores.sharpness >= 0.7 and sub_scores.brightness >= 0.7:
             reasons.append(self.TEMPLATES["bright_sharp"])
 
@@ -99,6 +102,8 @@ class ExplanationGenerator:
             reasons.append("main subject intact")
         if sub_scores.composition >= 0.7:
             reasons.append("balanced composition")
+        if sub_scores.area_prior >= 0.7:
+            reasons.append("compact framing")
         if sub_scores.sharpness >= 0.7 and sub_scores.brightness >= 0.7:
             reasons.append("clear and well-lit")
 

@@ -23,7 +23,8 @@ ABLATION_CONFIGS = {
     "w/o_yolo": {"subject": 0.0},
     "w/o_composition": {"composition": 0.0},
     "w/o_technical": {"technical": 0.0},
-    "grid_only": {"aesthetic": 0.0, "saliency": 0.0, "subject": 0.0, "composition": 0.0, "technical": 0.0},
+    "w/o_area_prior": {"area_prior": 0.0},
+    "grid_only": {"aesthetic": 0.0, "saliency": 0.0, "subject": 0.0, "composition": 0.0, "technical": 0.0, "area_prior": 0.0},
 }
 
 
@@ -46,10 +47,10 @@ def run_ablation(
         # Normalize remaining weights
         total = sum(
             getattr(cropper.fusion, f"weight_{k}")
-            for k in ["aesthetic", "saliency", "composition", "subject", "technical"]
+            for k in ["aesthetic", "saliency", "composition", "subject", "technical", "area_prior"]
         )
         if total > 0:
-            for k in ["aesthetic", "saliency", "composition", "subject", "technical"]:
+            for k in ["aesthetic", "saliency", "composition", "subject", "technical", "area_prior"]:
                 val = getattr(cropper.fusion, f"weight_{k}")
                 setattr(cropper.fusion, f"weight_{k}", val / total)
 
@@ -72,7 +73,7 @@ def run_ablation(
     # Restore default weights
     config = load_config()
     fcfg = config.get("fusion", {}).get("weights", {})
-    for k in ["aesthetic", "saliency", "composition", "subject", "technical"]:
+    for k in ["aesthetic", "saliency", "composition", "subject", "technical", "area_prior"]:
         setattr(cropper.fusion, f"weight_{k}", fcfg.get(k, 0.2))
 
     return {

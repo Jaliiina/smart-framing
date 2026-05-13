@@ -38,6 +38,7 @@ class SubScores:
     composition: float = 0.0
     subject: float = 0.0
     technical: float = 0.0
+    area_prior: float = 0.0
 
     # Detailed composition breakdown
     thirds: float = 0.0

@@ -132,7 +132,8 @@ class SaliencyDetector:
     ) -> List[float]:
         """Compute saliency preservation score for each candidate bbox.
 
-        Score = alpha * coverage - beta * center_offset - gamma * boundary_cut
+        Score = 0.55 * coverage + 0.35 * density
+                - 0.25 * boundary_cut - 0.20 * center_offset
 
         Args:
             saliency_map: (H, W) float32 in [0, 1].
@@ -155,6 +156,7 @@ class SaliencyDetector:
             # 1. Coverage: fraction of total saliency inside bbox
             region = saliency_map[max(0, y1):y2, max(0, x1):x2]
             coverage = float(region.sum()) / total_sal
+            density = float(region.mean()) if region.size > 0 else 0.0
 
             # 2. Center offset: distance from saliency centroid to bbox visual center
             region_sum = region.sum() + 1e-9
@@ -191,9 +193,12 @@ class SaliencyDetector:
                 boundary_count += (y2 - y1) * strip_w
             boundary_cut = boundary_sal / max(1, boundary_count) if boundary_count > 0 else 0.0
 
-            # Combined score
-            alpha, beta, gamma = 1.0, 0.5, 0.3
-            score = alpha * coverage - beta * center_offset - gamma * boundary_cut
+            score = (
+                0.55 * coverage
+                + 0.35 * density
+                - 0.25 * boundary_cut
+                - 0.20 * center_offset
+            )
             scores.append(max(0.0, score))
 
         return scores

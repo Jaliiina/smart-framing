@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -32,6 +33,9 @@ class SubjectDetector:
             "important_classes",
             [0, 1, 2, 3, 5, 7, 9, 16, 17],  # person, bicycle, car, motorcycle, bus, truck, cat, dog
         )
+        scfg = config.get("subject", {})
+        self.min_important_inclusion: float = scfg.get("min_important_inclusion", 0.92)
+        self.tightness_weight: float = scfg.get("tightness_weight", 0.25)
 
         self._model = None
         self._model_loaded = False
@@ -134,6 +138,7 @@ class SubjectDetector:
         for bbox in bboxes:
             weighted_inclusion = 0.0
             boundary_penalty = 0.0
+            weighted_tightness = 0.0
 
             for obj, ow in zip(important_objects, obj_weights):
                 # Inclusion ratio
@@ -142,6 +147,10 @@ class SubjectDetector:
                 inclusion = inter_area / obj_area
 
                 weighted_inclusion += ow * inclusion
+                if inclusion >= self.min_important_inclusion:
+                    crop_area = max(1, bbox_area(bbox))
+                    obj_to_crop = min(1.0, obj_area / crop_area)
+                    weighted_tightness += ow * math.sqrt(obj_to_crop)
 
                 # Boundary penetration penalty: check if bbox boundary cuts through object
                 bx1, by1, bx2, by2 = bbox
@@ -150,15 +159,17 @@ class SubjectDetector:
                 if inter_area > 0 and inter_area < obj_area:
                     # How much of the object is outside the bbox
                     outside_ratio = 1.0 - inclusion
-                    # Extra penalty for person class (class_id=0)
-                    if obj.class_id == 0:
-                        boundary_penalty += ow * outside_ratio * 2.0
+                    # Extra penalty for important human/vehicle/animal classes.
+                    if obj.class_id in self.important_classes:
+                        severity = 2.5 if inclusion < self.min_important_inclusion else 1.2
+                        boundary_penalty += ow * outside_ratio * severity
                     else:
                         boundary_penalty += ow * outside_ratio * 0.5
 
             raw_score = weighted_inclusion / total_weight
+            tightness = weighted_tightness / total_weight
             penalty = min(1.0, boundary_penalty / total_weight)
-            score = max(0.0, raw_score - penalty)
+            score = min(1.0, max(0.0, raw_score - penalty + self.tightness_weight * tightness))
             scores.append(score)
 
         return scores

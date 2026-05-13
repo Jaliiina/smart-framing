@@ -55,6 +55,7 @@ def evaluate_single(cropper: AestheticCropper, item: Dict) -> Dict:
             "composition": round(result.best_sub_scores.composition, 4),
             "subject": round(result.best_sub_scores.subject, 4),
             "technical": round(result.best_sub_scores.technical, 4),
+            "area_prior": round(result.best_sub_scores.area_prior, 4),
         },
     }
 

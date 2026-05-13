@@ -2,13 +2,13 @@
 # All hyperparameters, model paths, and scoring weights
 
 candidate_generation:
-  grid_size: 6          # NxN grid points (6 or 8)
-  area_ratios: [0.25, 0.40, 0.55, 0.70]
+  grid_size: 8          # NxN grid points (6 or 8)
+  area_ratios: [0.18, 0.25, 0.33, 0.45, 0.60, 0.75]
   aspect_ratios: [1.0, 1.333, 0.75, 1.778, 0.5625]  # 1:1, 4:3, 3:4, 16:9, 9:16
   use_original_ratio: true
-  top_k: 100
+  top_k: 300
   min_area_ratio: 0.10   # filter candidates smaller than this * image area
-  max_area_ratio: 0.80   # filter candidates larger than this * image area
+  max_area_ratio: 0.85   # filter candidates larger than this * image area
   min_aspect_ratio: 0.5  # filter extreme aspect ratios
   max_aspect_ratio: 2.0
   nms_iou_threshold: 0.7
@@ -43,20 +43,20 @@ models:
 fusion:
   weights:
     aesthetic: 0.25
-    saliency: 0.25
-    composition: 0.20
-    subject: 0.20
-    technical: 0.10
+    saliency: 0.22
+    composition: 0.22
+    subject: 0.18
+    technical: 0.05
+    area_prior: 0.08
+  area_prior:
+    ideal_range: [0.25, 0.60]
+    large_penalty_start: 0.70
+    max_allowed_without_reason: 0.85
   # Fallback strategies
   saliency_uniform_std_threshold: 0.05
   saliency_uniform_weight_reduction: 0.10
-  low_score_threshold: 0.15
-  # Area-based penalty to avoid selecting near-full-image crops
-  area_penalty_factor: 0.30   # multiply penalty = 1 - factor * (area/max_area)
-  area_penalty_power: 1.0
-  area_penalty_min: 0.5       # minimum multiplier applied to any candidate
+  low_score_threshold: 0.3
   top_k_display: 3
-
 
 composition:
   weights:
@@ -76,3 +76,7 @@ technical_quality:
     saturation: 0.20
   brightness_ideal_range: [50, 200]
   saturation_ideal_range: [40, 180]
+
+subject:
+  min_important_inclusion: 0.92
+  tightness_weight: 0.25

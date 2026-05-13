@@ -63,7 +63,10 @@ class CandidateGenerator:
 
         # --- NMS dedup ---
         if len(filtered) > 0:
-            scores = [float(bbox_area(b)) / max(1, img_area) for b in filtered]
+            scores = [
+                self._prefilter_score(b, img_area, saliency_map)
+                for b in filtered
+            ]
             keep = nms(filtered, scores, self.nms_iou_threshold)
             filtered = [filtered[i] for i in keep]
 
@@ -74,6 +77,38 @@ class CandidateGenerator:
             filtered = [filtered[i] for i in idx]
 
         return filtered
+
+    @staticmethod
+    def _scale_prior(area_ratio: float) -> float:
+        """Prefer useful medium crops during NMS without removing all large boxes."""
+        if 0.25 <= area_ratio <= 0.60:
+            return 1.0
+        if area_ratio < 0.25:
+            return max(0.0, 1.0 - (0.25 - area_ratio) / 0.20)
+        return max(0.0, 1.0 - (area_ratio - 0.60) / 0.35)
+
+    def _prefilter_score(
+        self,
+        bbox: BBox,
+        img_area: int,
+        saliency_map: Optional[np.ndarray],
+    ) -> float:
+        """Score candidates for NMS so medium, content-dense boxes survive."""
+        area_ratio = float(bbox_area(bbox)) / max(1, img_area)
+        scale_prior = self._scale_prior(area_ratio)
+
+        if saliency_map is None or saliency_map.size == 0:
+            return scale_prior
+
+        x1, y1, x2, y2 = bbox
+        region = saliency_map[max(0, y1):y2, max(0, x1):x2]
+        if region.size == 0:
+            return scale_prior
+
+        total_sal = float(saliency_map.sum()) + 1e-9
+        coverage = float(region.sum()) / total_sal
+        density = float(region.mean())
+        return 0.45 * coverage + 0.35 * density + 0.20 * scale_prior
 
     def _grid_anchors(self, h: int, w: int, img_area: int) -> List[BBox]:
         """Generate GAIC-style grid anchor candidates."""

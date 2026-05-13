@@ -126,6 +126,7 @@ class AestheticCropper:
             technical_scores=technical_scores,
             saliency_is_uniform=is_uniform,
             has_subject=has_subject,
+            image_shape=image.shape,
         )
 
         # --- Step 6: Generate explanation ---
@@ -225,6 +226,7 @@ class AestheticCropper:
             "composition": self.fusion.weight_composition,
             "subject": self.fusion.weight_subject,
             "technical": self.fusion.weight_technical,
+            "area_prior": self.fusion.weight_area_prior,
         }
 
         for k, v in custom_weights.items():

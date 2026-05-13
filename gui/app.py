@@ -99,6 +99,7 @@ def crop_image():
                 "composition": float(round(float(result.best_sub_scores.composition), 4)),
                 "subject": float(round(float(result.best_sub_scores.subject), 4)),
                 "technical": float(round(float(result.best_sub_scores.technical), 4)),
+                "area_prior": float(round(float(result.best_sub_scores.area_prior), 4)),
                 "thirds": float(round(float(result.best_sub_scores.thirds), 4)),
                 "center_balance": float(round(float(result.best_sub_scores.center_balance), 4)),
                 "whitespace": float(round(float(result.best_sub_scores.whitespace), 4)),

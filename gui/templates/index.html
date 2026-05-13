@@ -274,6 +274,9 @@
                     grid.innerHTML += `<div class="detail-item"><span>${label}</span><span>${data.sub_scores[key].toFixed(4)}</span></div>`;
                 }
             }
+            if (data.sub_scores.area_prior !== undefined) {
+                grid.innerHTML += `<div class="detail-item"><span>Area Prior</span><span>${data.sub_scores.area_prior.toFixed(4)}</span></div>`;
+            }
         }
 
         function displayBatchResults(results) {
