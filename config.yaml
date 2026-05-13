@@ -1,0 +1,73 @@
+# AestheticCropper Configuration
+# All hyperparameters, model paths, and scoring weights
+
+candidate_generation:
+  grid_size: 6          # NxN grid points (6 or 8)
+  area_ratios: [0.35, 0.45, 0.60, 0.75, 0.90]
+  aspect_ratios: [1.0, 1.333, 0.75, 1.778, 0.5625]  # 1:1, 4:3, 3:4, 16:9, 9:16
+  use_original_ratio: true
+  top_k: 150
+  min_area_ratio: 0.10   # filter candidates smaller than this * image area
+  max_area_ratio: 0.95   # filter candidates larger than this * image area
+  min_aspect_ratio: 0.5  # filter extreme aspect ratios
+  max_aspect_ratio: 2.0
+  nms_iou_threshold: 0.7
+  saliency_supplement: true
+  saliency_peak_threshold: 0.5
+  saliency_smooth_sigma: 5.0
+
+preprocessing:
+  resize_short_edge: 512
+  u2net_input_size: 320
+
+models:
+  u2net:
+    weights_path: "models/u2net.pth"
+    lite_weights_path: "models/u2netp.pth"
+    use_lite: true
+    device: "cpu"       # "cuda" or "cpu"
+  yolo:
+    model_name: "yolov8n.pt"
+    confidence_threshold: 0.5
+    device: "cpu"
+    # COCO class IDs that require high completeness protection
+    important_classes: [0, 1, 2, 3, 5, 7, 9, 16, 17, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65]
+    # 0=person, 1=bicycle, 2=car, 3=motorcycle, 5=bus, 7=truck, 9=traffic light
+    # 16=cat, 17=dog, 56-65=various food/furniture/kitchen items
+  aesthetic:
+    model_path: "models/aesthetic_predictor.pth"
+    clip_model: "ViT-B/32"
+    device: "cpu"
+    use_fallback: true   # fall back to hand-crafted features if model unavailable
+
+fusion:
+  weights:
+    aesthetic: 0.25
+    saliency: 0.25
+    composition: 0.20
+    subject: 0.20
+    technical: 0.10
+  # Fallback strategies
+  saliency_uniform_std_threshold: 0.05
+  saliency_uniform_weight_reduction: 0.10
+  low_score_threshold: 0.3
+  top_k_display: 3
+
+composition:
+  weights:
+    rule_of_thirds: 0.35
+    center_balance: 0.25
+    whitespace: 0.15
+    edge_simplicity: 0.15
+    symmetry: 0.10
+  thirds_sigma: 0.08
+  whitespace_ideal_ratio: 0.3
+
+technical_quality:
+  weights:
+    sharpness: 0.30
+    brightness: 0.25
+    contrast: 0.25
+    saturation: 0.20
+  brightness_ideal_range: [50, 200]
+  saturation_ideal_range: [40, 180]

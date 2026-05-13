@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AestheticCropper - 智能取景系统</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AestheticCropper</h1>
+            <p>基于多特征融合的智能取景系统</p>
+        </header>
+
+        <main>
+            <!-- Image Input Area -->
+            <section class="input-section">
+                <h2>图像输入</h2>
+                <div class="upload-area">
+                    <input type="file" id="singleImage" accept="image/*" hidden>
+                    <button onclick="document.getElementById('singleImage').click()">选择单张图像</button>
+                    <input type="file" id="batchImages" accept="image/*" multiple hidden>
+                    <button onclick="document.getElementById('batchImages').click()">批量上传图像</button>
+                </div>
+            </section>
+
+            <!-- Operation Buttons -->
+            <section class="action-section">
+                <button id="btnCrop" onclick="startCrop()" disabled>开始取景</button>
+                <button id="btnSave" onclick="saveCrop()" disabled>保存裁剪图</button>
+                <button id="btnExport" onclick="exportCoords()" disabled>导出坐标</button>
+            </section>
+
+            <!-- Display Area -->
+            <section class="display-section">
+                <div class="display-grid">
+                    <!-- Original Image -->
+                    <div class="panel">
+                        <h3>原图 + 取景框</h3>
+                        <div id="originalImage" class="image-container">
+                            <p class="placeholder">上传图像后显示</p>
+                        </div>
+                    </div>
+                    <!-- Crop Result -->
+                    <div class="panel">
+                        <h3>裁剪结果</h3>
+                        <div id="cropImage" class="image-container">
+                            <p class="placeholder">取景后显示</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Score Info Panel -->
+            <section class="score-section">
+                <h2>评分信息</h2>
+                <div id="scorePanel" class="score-grid">
+                    <div class="score-item">
+                        <span class="score-label">综合得分</span>
+                        <span id="finalScore" class="score-value">--</span>
+                    </div>
+                    <div class="score-item">
+                        <span class="score-label">美学评分</span>
+                        <span id="aestheticScore" class="score-value">--</span>
+                    </div>
+                    <div class="score-item">
+                        <span class="score-label">显著性评分</span>
+                        <span id="saliencyScore" class="score-value">--</span>
+                    </div>
+                    <div class="score-item">
+                        <span class="score-label">构图评分</span>
+                        <span id="compositionScore" class="score-value">--</span>
+                    </div>
+                    <div class="score-item">
+                        <span class="score-label">主体完整性</span>
+                        <span id="subjectScore" class="score-value">--</span>
+                    </div>
+                    <div class="score-item">
+                        <span class="score-label">技术质量</span>
+                        <span id="technicalScore" class="score-value">--</span>
+                    </div>
+                </div>
+                <div id="explanation" class="explanation"></div>
+                <div id="subScoreDetails" class="sub-scores" style="display:none;">
+                    <h4>详细评分</h4>
+                    <div id="detailGrid" class="detail-grid"></div>
+                </div>
+            </section>
+
+            <!-- Batch Results -->
+            <section id="batchSection" class="batch-section" style="display:none;">
+                <h2>批量处理结果</h2>
+                <div id="batchResults" class="batch-results"></div>
+            </section>
+
+            <!-- Advanced Settings -->
+            <section class="settings-section">
+                <h2>高级设置</h2>
+                <details>
+                    <summary>展开参数调整</summary>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label>美学权重</label>
+                            <input type="range" id="wAesthetic" min="0" max="0.5" step="0.05" value="0.25">
+                            <span id="wAestheticVal">0.25</span>
+                        </div>
+                        <div class="setting-item">
+                            <label>显著性权重</label>
+                            <input type="range" id="wSaliency" min="0" max="0.5" step="0.05" value="0.25">
+                            <span id="wSaliencyVal">0.25</span>
+                        </div>
+                        <div class="setting-item">
+                            <label>构图权重</label>
+                            <input type="range" id="wComposition" min="0" max="0.5" step="0.05" value="0.20">
+                            <span id="wCompositionVal">0.20</span>
+                        </div>
+                        <div class="setting-item">
+                            <label>主体权重</label>
+                            <input type="range" id="wSubject" min="0" max="0.5" step="0.05" value="0.20">
+                            <span id="wSubjectVal">0.20</span>
+                        </div>
+                        <div class="setting-item">
+                            <label>技术权重</label>
+                            <input type="range" id="wTechnical" min="0" max="0.5" step="0.05" value="0.10">
+                            <span id="wTechnicalVal">0.10</span>
+                        </div>
+                        <div class="setting-item">
+                            <label>候选框数量</label>
+                            <input type="number" id="topK" min="50" max="500" value="150">
+                        </div>
+                    </div>
+                </details>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        let currentResult = null;
+        let currentImageFile = null;
+        let batchFiles = null;
+
+        // Single image upload
+        document.getElementById('singleImage').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                currentImageFile = e.target.files[0];
+                batchFiles = null;
+                previewImage(currentImageFile);
+                document.getElementById('btnCrop').disabled = false;
+            }
+        });
+
+        // Batch image upload
+        document.getElementById('batchImages').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                batchFiles = e.target.files;
+                currentImageFile = null;
+                document.getElementById('btnCrop').disabled = false;
+                // Preview first image
+                previewImage(batchFiles[0]);
+            }
+        });
+
+        function previewImage(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const container = document.getElementById('originalImage');
+                container.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function startCrop() {
+            if (currentImageFile) {
+                cropSingle();
+            } else if (batchFiles) {
+                cropBatch();
+            }
+        }
+
+        function cropSingle() {
+            const formData = new FormData();
+            formData.append('image', currentImageFile);
+
+            document.getElementById('btnCrop').disabled = true;
+            document.getElementById('btnCrop').textContent = '处理中...';
+
+            fetch('/api/crop', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                currentResult = data;
+                displayResult(data);
+            })
+            .catch(error => {
+                alert('Request failed: ' + error);
+            })
+            .finally(() => {
+                document.getElementById('btnCrop').disabled = false;
+                document.getElementById('btnCrop').textContent = '开始取景';
+                document.getElementById('btnSave').disabled = false;
+                document.getElementById('btnExport').disabled = false;
+            });
+        }
+
+        function cropBatch() {
+            const formData = new FormData();
+            for (let f of batchFiles) {
+                formData.append('images', f);
+            }
+
+            document.getElementById('btnCrop').disabled = true;
+            document.getElementById('btnCrop').textContent = '批量处理中...';
+            document.getElementById('batchSection').style.display = 'block';
+
+            fetch('/api/batch', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                displayBatchResults(data.results);
+            })
+            .catch(error => {
+                alert('Request failed: ' + error);
+            })
+            .finally(() => {
+                document.getElementById('btnCrop').disabled = false;
+                document.getElementById('btnCrop').textContent = '开始取景';
+            });
+        }
+
+        function displayResult(data) {
+            // Show images
+            document.getElementById('originalImage').innerHTML =
+                `<img src="${data.original_image}" alt="Original with bbox">`;
+            document.getElementById('cropImage').innerHTML =
+                `<img src="${data.crop_image}" alt="Cropped">`;
+
+            // Show scores
+            document.getElementById('finalScore').textContent = data.score.toFixed(4);
+            document.getElementById('aestheticScore').textContent = data.sub_scores.aesthetic.toFixed(4);
+            document.getElementById('saliencyScore').textContent = data.sub_scores.saliency.toFixed(4);
+            document.getElementById('compositionScore').textContent = data.sub_scores.composition.toFixed(4);
+            document.getElementById('subjectScore').textContent = data.sub_scores.subject.toFixed(4);
+            document.getElementById('technicalScore').textContent = data.sub_scores.technical.toFixed(4);
+
+            // Show explanation
+            document.getElementById('explanation').textContent = data.explanation;
+
+            // Show detailed sub-scores
+            const details = document.getElementById('subScoreDetails');
+            details.style.display = 'block';
+            const grid = document.getElementById('detailGrid');
+            grid.innerHTML = '';
+            const labels = {
+                'thirds': '三分法', 'center_balance': '中心平衡', 'whitespace': '留白',
+                'edge_simplicity': '边缘简洁', 'symmetry': '对称性',
+                'sharpness': '清晰度', 'brightness': '亮度', 'contrast': '对比度',
+                'saturation': '饱和度'
+            };
+            for (let [key, label] of Object.entries(labels)) {
+                if (data.sub_scores[key] !== undefined) {
+                    grid.innerHTML += `<div class="detail-item"><span>${label}</span><span>${data.sub_scores[key].toFixed(4)}</span></div>`;
+                }
+            }
+        }
+
+        function displayBatchResults(results) {
+            const container = document.getElementById('batchResults');
+            container.innerHTML = '';
+            for (let r of results) {
+                const div = document.createElement('div');
+                div.className = 'batch-item';
+                if (r.error) {
+                    div.innerHTML = `<strong>${r.filename}</strong>: Error - ${r.error}`;
+                } else {
+                    div.innerHTML = `<strong>${r.filename}</strong>: bbox=[${r.bbox.join(', ')}] score=${r.score} - ${r.explanation}`;
+                }
+                container.appendChild(div);
+            }
+        }
+
+        function saveCrop() {
+            if (!currentResult || !currentResult.crop_image) return;
+            const link = document.createElement('a');
+            link.href = currentResult.crop_image;
+            link.download = 'crop_result.jpg';
+            link.click();
+        }
+
+        function exportCoords() {
+            if (!currentResult) return;
+            const data = {
+                bbox: currentResult.bbox,
+                score: currentResult.score,
+                explanation: currentResult.explanation,
+                sub_scores: currentResult.sub_scores
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'crop_coords.json';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Weight slider listeners
+        ['wAesthetic', 'wSaliency', 'wComposition', 'wSubject', 'wTechnical'].forEach(id => {
+            const el = document.getElementById(id);
+            const valEl = document.getElementById(id + 'Val');
+            el.addEventListener('input', function() {
+                valEl.textContent = this.value;
+            });
+        });
+    </script>
+</body>
+</html>
