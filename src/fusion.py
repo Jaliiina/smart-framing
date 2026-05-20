@@ -24,6 +24,12 @@ class FusionModule:
         self.saliency_uniform_std: float = fcfg.get("saliency_uniform_std_threshold", 0.05)
         self.saliency_uniform_reduction: float = fcfg.get("saliency_uniform_weight_reduction", 0.10)
         self.low_score_threshold: float = fcfg.get("low_score_threshold", 0.3)
+        # Area-penalty parameters (to downweight near-full-image crops)
+        self.area_penalty_factor: float = fcfg.get("area_penalty_factor", 0.3)
+        self.area_penalty_power: float = fcfg.get("area_penalty_power", 1.0)
+        self.area_penalty_min: float = fcfg.get("area_penalty_min", 0.5)
+        # keep fcfg for later access if needed
+        self._fcfg = fcfg
         self.top_k_display: int = fcfg.get("top_k_display", 3)
 
     def fuse(
@@ -114,6 +120,32 @@ class FusionModule:
             + w_technical * norm_technical
         )
 
+        # --- Area-based penalty (discourage near-full-image crops) ---
+        # Read optional area-penalty params from config (with safe defaults)
+        fcfg = getattr(self, "_fcfg", None)
+        # If _fcfg not set, try to retrieve attributes added at __init__ time
+        try:
+            area_penalty_factor = getattr(self, "area_penalty_factor")
+            area_penalty_power = getattr(self, "area_penalty_power")
+            area_penalty_min = getattr(self, "area_penalty_min")
+        except Exception:
+            # Defaults
+            area_penalty_factor = 0.3
+            area_penalty_power = 1.0
+            area_penalty_min = 0.5
+
+        # Compute candidate areas
+        areas = np.array([(c[2] - c[0]) * (c[3] - c[1]) for c in bboxes], dtype=np.float64)
+        max_area = float(areas.max()) if areas.size > 0 else 1.0
+        if max_area <= 0:
+            max_area = 1.0
+        norm_area = areas / max_area
+
+        # Penalty multiplier: closer to 1 for small boxes, reduced for large boxes
+        penalty = 1.0 - area_penalty_factor * (norm_area ** float(area_penalty_power))
+        penalty = np.clip(penalty, area_penalty_min, 1.0)
+        final_scores = final_scores * penalty
+
         # --- Build results ---
         candidates = []
         for i in range(n):
@@ -147,11 +179,15 @@ class FusionModule:
 
         best = candidates[0]
 
-        # Fallback: if best score too low, consider a conservative large-area crop
+        # Fallback: if best score too low, consider replacing with a larger-area crop
+        # only when the larger crop's score is meaningfully higher and its area
+        # is not extremely close to the max (avoid selecting near-full-image boxes).
         if best.final_score < self.low_score_threshold:
-            # Find the candidate with the largest area
             largest = max(candidates, key=lambda c: (c.bbox[2] - c.bbox[0]) * (c.bbox[3] - c.bbox[1]))
-            if largest.final_score > best.final_score * 0.8:
+            largest_area = (largest.bbox[2] - largest.bbox[0]) * (largest.bbox[3] - largest.bbox[1])
+            largest_norm = largest_area / max_area if max_area > 0 else 0.0
+            # Require a meaningful score improvement (e.g., 5%) and avoid near-full-image boxes
+            if largest.final_score > best.final_score * 1.05 and largest_norm < 0.95:
                 best = largest
 
         # Top-K for display
