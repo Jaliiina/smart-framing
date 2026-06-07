@@ -28,70 +28,21 @@
             <!-- Operation Buttons -->
             <section class="action-section">
                 <button id="btnCrop" onclick="startCrop()" disabled>开始取景</button>
-                <button id="btnSave" onclick="saveCrop()" disabled>保存裁剪图</button>
-                <button id="btnExport" onclick="exportCoords()" disabled>导出坐标</button>
+                <button id="btnDownloadAll" onclick="downloadAllCrops()" disabled style="display:none">下载全部裁剪图</button>
+                <button id="btnExport" onclick="exportAllCoords()" disabled style="display:none">导出全部坐标</button>
             </section>
 
-            <!-- Display Area -->
-            <section class="display-section">
-                <div class="display-grid">
-                    <!-- Original Image -->
-                    <div class="panel">
-                        <h3>原图 + 取景框</h3>
-                        <div id="originalImage" class="image-container">
-                            <p class="placeholder">上传图像后显示</p>
-                        </div>
-                    </div>
-                    <!-- Crop Result -->
-                    <div class="panel">
-                        <h3>裁剪结果</h3>
-                        <div id="cropImage" class="image-container">
-                            <p class="placeholder">取景后显示</p>
-                        </div>
+            <!-- Results Area (unified for single + batch) -->
+            <section id="resultsSection" class="results-section" style="display:none">
+                <div class="results-header">
+                    <h2>取景结果</h2>
+                    <div id="batchNav" class="batch-nav" style="display:none">
+                        <button id="btnPrev" onclick="navigateResult(-1)" disabled>&lt; 上一张</button>
+                        <span id="navInfo">1 / 1</span>
+                        <button id="btnNext" onclick="navigateResult(1)" disabled>下一张 &gt;</button>
                     </div>
                 </div>
-            </section>
-
-            <!-- Score Info Panel -->
-            <section class="score-section">
-                <h2>评分信息</h2>
-                <div id="scorePanel" class="score-grid">
-                    <div class="score-item">
-                        <span class="score-label">综合得分</span>
-                        <span id="finalScore" class="score-value">--</span>
-                    </div>
-                    <div class="score-item">
-                        <span class="score-label">美学评分</span>
-                        <span id="aestheticScore" class="score-value">--</span>
-                    </div>
-                    <div class="score-item">
-                        <span class="score-label">显著性评分</span>
-                        <span id="saliencyScore" class="score-value">--</span>
-                    </div>
-                    <div class="score-item">
-                        <span class="score-label">构图评分</span>
-                        <span id="compositionScore" class="score-value">--</span>
-                    </div>
-                    <div class="score-item">
-                        <span class="score-label">主体完整性</span>
-                        <span id="subjectScore" class="score-value">--</span>
-                    </div>
-                    <div class="score-item">
-                        <span class="score-label">技术质量</span>
-                        <span id="technicalScore" class="score-value">--</span>
-                    </div>
-                </div>
-                <div id="explanation" class="explanation"></div>
-                <div id="subScoreDetails" class="sub-scores" style="display:none;">
-                    <h4>详细评分</h4>
-                    <div id="detailGrid" class="detail-grid"></div>
-                </div>
-            </section>
-
-            <!-- Batch Results -->
-            <section id="batchSection" class="batch-section" style="display:none;">
-                <h2>批量处理结果</h2>
-                <div id="batchResults" class="batch-results"></div>
+                <div id="resultsContainer" class="results-container"></div>
             </section>
 
             <!-- Advanced Settings -->
@@ -102,32 +53,33 @@
                     <div class="settings-grid">
                         <div class="setting-item">
                             <label>美学权重</label>
-                            <input type="range" id="wAesthetic" min="0" max="0.5" step="0.05" value="0.25">
-                            <span id="wAestheticVal">0.25</span>
+                            <input type="range" id="wAesthetic" min="0" max="0.5" step="0.05" value="0.20">
+                            <span id="wAestheticVal">0.20</span>
                         </div>
                         <div class="setting-item">
                             <label>显著性权重</label>
-                            <input type="range" id="wSaliency" min="0" max="0.5" step="0.05" value="0.25">
-                            <span id="wSaliencyVal">0.25</span>
+                            <input type="range" id="wSaliency" min="0" max="0.5" step="0.05" value="0.18">
+                            <span id="wSaliencyVal">0.18</span>
                         </div>
                         <div class="setting-item">
                             <label>构图权重</label>
-                            <input type="range" id="wComposition" min="0" max="0.5" step="0.05" value="0.20">
-                            <span id="wCompositionVal">0.20</span>
+                            <input type="range" id="wComposition" min="0" max="0.5" step="0.05" value="0.18">
+                            <span id="wCompositionVal">0.18</span>
                         </div>
                         <div class="setting-item">
                             <label>主体权重</label>
-                            <input type="range" id="wSubject" min="0" max="0.5" step="0.05" value="0.20">
-                            <span id="wSubjectVal">0.20</span>
+                            <input type="range" id="wSubject" min="0" max="0.5" step="0.05" value="0.16">
+                            <span id="wSubjectVal">0.16</span>
                         </div>
                         <div class="setting-item">
                             <label>技术权重</label>
-                            <input type="range" id="wTechnical" min="0" max="0.5" step="0.05" value="0.10">
-                            <span id="wTechnicalVal">0.10</span>
+                            <input type="range" id="wTechnical" min="0" max="0.5" step="0.05" value="0.05">
+                            <span id="wTechnicalVal">0.05</span>
                         </div>
                         <div class="setting-item">
-                            <label>候选框数量</label>
-                            <input type="number" id="topK" min="50" max="500" value="150">
+                            <label>面积先验权重</label>
+                            <input type="range" id="wAreaPrior" min="0" max="0.5" step="0.05" value="0.18">
+                            <span id="wAreaPriorVal">0.18</span>
                         </div>
                     </div>
                 </details>
@@ -136,39 +88,27 @@
     </div>
 
     <script>
-        let currentResult = null;
+        let allResults = [];    // all processed results
+        let currentIdx = 0;     // current displayed result index
         let currentImageFile = null;
         let batchFiles = null;
 
-        // Single image upload
+        // --- Upload handlers ---
         document.getElementById('singleImage').addEventListener('change', function(e) {
             if (e.target.files.length > 0) {
                 currentImageFile = e.target.files[0];
                 batchFiles = null;
-                previewImage(currentImageFile);
                 document.getElementById('btnCrop').disabled = false;
             }
         });
 
-        // Batch image upload
         document.getElementById('batchImages').addEventListener('change', function(e) {
             if (e.target.files.length > 0) {
                 batchFiles = e.target.files;
                 currentImageFile = null;
                 document.getElementById('btnCrop').disabled = false;
-                // Preview first image
-                previewImage(batchFiles[0]);
             }
         });
-
-        function previewImage(file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const container = document.getElementById('originalImage');
-                container.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
-            };
-            reader.readAsDataURL(file);
-        }
 
         function startCrop() {
             if (currentImageFile) {
@@ -178,139 +118,162 @@
             }
         }
 
+        // --- Single image ---
         function cropSingle() {
             const formData = new FormData();
             formData.append('image', currentImageFile);
+            setProcessing(true);
 
-            document.getElementById('btnCrop').disabled = true;
-            document.getElementById('btnCrop').textContent = '处理中...';
-
-            fetch('/api/crop', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
+            fetch('/api/crop', { method: 'POST', body: formData })
+            .then(r => r.json())
             .then(data => {
-                if (data.error) {
-                    alert('Error: ' + data.error);
-                    return;
-                }
-                currentResult = data;
-                displayResult(data);
+                if (data.error) { alert('Error: ' + data.error); return; }
+                allResults = [{ filename: currentImageFile.name, ...data }];
+                currentIdx = 0;
+                showResults();
             })
-            .catch(error => {
-                alert('Request failed: ' + error);
-            })
-            .finally(() => {
-                document.getElementById('btnCrop').disabled = false;
-                document.getElementById('btnCrop').textContent = '开始取景';
-                document.getElementById('btnSave').disabled = false;
-                document.getElementById('btnExport').disabled = false;
-            });
+            .catch(err => alert('Request failed: ' + err))
+            .finally(() => setProcessing(false));
         }
 
+        // --- Batch ---
         function cropBatch() {
             const formData = new FormData();
-            for (let f of batchFiles) {
-                formData.append('images', f);
-            }
+            for (let f of batchFiles) formData.append('images', f);
+            setProcessing(true);
 
-            document.getElementById('btnCrop').disabled = true;
-            document.getElementById('btnCrop').textContent = '批量处理中...';
-            document.getElementById('batchSection').style.display = 'block';
-
-            fetch('/api/batch', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
+            fetch('/api/batch', { method: 'POST', body: formData })
+            .then(r => r.json())
             .then(data => {
-                if (data.error) {
-                    alert('Error: ' + data.error);
-                    return;
-                }
-                displayBatchResults(data.results);
+                if (data.error) { alert('Error: ' + data.error); return; }
+                allResults = data.results;
+                currentIdx = 0;
+                showResults();
             })
-            .catch(error => {
-                alert('Request failed: ' + error);
-            })
-            .finally(() => {
-                document.getElementById('btnCrop').disabled = false;
-                document.getElementById('btnCrop').textContent = '开始取景';
-            });
+            .catch(err => alert('Request failed: ' + err))
+            .finally(() => setProcessing(false));
         }
 
-        function displayResult(data) {
-            // Show images
-            document.getElementById('originalImage').innerHTML =
-                `<img src="${data.original_image}" alt="Original with bbox">`;
-            document.getElementById('cropImage').innerHTML =
-                `<img src="${data.crop_image}" alt="Cropped">`;
-
-            // Show scores
-            document.getElementById('finalScore').textContent = data.score.toFixed(4);
-            document.getElementById('aestheticScore').textContent = data.sub_scores.aesthetic.toFixed(4);
-            document.getElementById('saliencyScore').textContent = data.sub_scores.saliency.toFixed(4);
-            document.getElementById('compositionScore').textContent = data.sub_scores.composition.toFixed(4);
-            document.getElementById('subjectScore').textContent = data.sub_scores.subject.toFixed(4);
-            document.getElementById('technicalScore').textContent = data.sub_scores.technical.toFixed(4);
-
-            // Show explanation
-            document.getElementById('explanation').textContent = data.explanation;
-
-            // Show detailed sub-scores
-            const details = document.getElementById('subScoreDetails');
-            details.style.display = 'block';
-            const grid = document.getElementById('detailGrid');
-            grid.innerHTML = '';
-            const labels = {
-                'thirds': '三分法', 'center_balance': '中心平衡', 'whitespace': '留白',
-                'edge_simplicity': '边缘简洁', 'symmetry': '对称性',
-                'sharpness': '清晰度', 'brightness': '亮度', 'contrast': '对比度',
-                'saturation': '饱和度'
-            };
-            for (let [key, label] of Object.entries(labels)) {
-                if (data.sub_scores[key] !== undefined) {
-                    grid.innerHTML += `<div class="detail-item"><span>${label}</span><span>${data.sub_scores[key].toFixed(4)}</span></div>`;
-                }
-            }
-            if (data.sub_scores.area_prior !== undefined) {
-                grid.innerHTML += `<div class="detail-item"><span>Area Prior</span><span>${data.sub_scores.area_prior.toFixed(4)}</span></div>`;
-            }
+        function setProcessing(on) {
+            const btn = document.getElementById('btnCrop');
+            btn.disabled = on;
+            btn.textContent = on ? '处理中...' : '开始取景';
         }
 
-        function displayBatchResults(results) {
-            const container = document.getElementById('batchResults');
-            container.innerHTML = '';
-            for (let r of results) {
-                const div = document.createElement('div');
-                div.className = 'batch-item';
-                if (r.error) {
-                    div.innerHTML = `<strong>${r.filename}</strong>: Error - ${r.error}`;
-                } else {
-                    div.innerHTML = `<strong>${r.filename}</strong>: bbox=[${r.bbox.join(', ')}] score=${r.score} - ${r.explanation}`;
-                }
-                container.appendChild(div);
-            }
+        // --- Display results ---
+        function showResults() {
+            const section = document.getElementById('resultsSection');
+            section.style.display = 'block';
+
+            const isBatch = allResults.length > 1;
+            document.getElementById('batchNav').style.display = isBatch ? 'flex' : 'none';
+            document.getElementById('btnDownloadAll').style.display = allResults.length > 1 ? 'inline-block' : 'none';
+            document.getElementById('btnExport').style.display = allResults.length > 0 ? 'inline-block' : 'none';
+            document.getElementById('btnDownloadAll').disabled = false;
+            document.getElementById('btnExport').disabled = false;
+
+            renderCurrentResult();
+            updateNav();
         }
 
-        function saveCrop() {
-            if (!currentResult || !currentResult.crop_image) return;
+        function renderCurrentResult() {
+            const r = allResults[currentIdx];
+            const container = document.getElementById('resultsContainer');
+
+            if (r.error) {
+                container.innerHTML = `<div class="result-card"><p class="error-msg"><strong>${r.filename}</strong>: Error - ${r.error}</p></div>`;
+                return;
+            }
+
+            const subScores = r.sub_scores || {};
+            container.innerHTML = `
+                <div class="result-card">
+                    <div class="result-filename">${r.filename || '结果'}</div>
+                    <div class="result-images">
+                        <div class="result-img-panel">
+                            <p class="result-img-label">原图 + 取景框</p>
+                            <img src="${r.original_image}" alt="Original with bbox">
+                        </div>
+                        <div class="result-img-panel">
+                            <p class="result-img-label">裁剪结果</p>
+                            <img src="${r.crop_image}" alt="Cropped">
+                            <button class="btn-download-crop" onclick="downloadCrop(${currentIdx})">下载裁剪图</button>
+                        </div>
+                    </div>
+                    <div class="result-scores">
+                        <div class="score-item-main">
+                            <span class="score-label">综合得分</span>
+                            <span class="score-value">${r.score.toFixed(4)}</span>
+                        </div>
+                        <div class="score-item-sub">
+                            <span>美学 ${subScores.aesthetic !== undefined ? subScores.aesthetic.toFixed(3) : '--'}</span>
+                            <span>显著性 ${subScores.saliency !== undefined ? subScores.saliency.toFixed(3) : '--'}</span>
+                            <span>构图 ${subScores.composition !== undefined ? subScores.composition.toFixed(3) : '--'}</span>
+                            <span>主体 ${subScores.subject !== undefined ? subScores.subject.toFixed(3) : '--'}</span>
+                            <span>技术 ${subScores.technical !== undefined ? subScores.technical.toFixed(3) : '--'}</span>
+                            <span>面积 ${subScores.area_prior !== undefined ? subScores.area_prior.toFixed(3) : '--'}</span>
+                        </div>
+                    </div>
+                    <div class="result-details">
+                        <details>
+                            <summary>详细评分</summary>
+                            <div class="detail-grid">
+                                ${Object.entries({
+                                    thirds: '三分法', center_balance: '中心平衡', whitespace: '留白',
+                                    edge_simplicity: '边缘简洁', symmetry: '对称性',
+                                    sharpness: '清晰度', brightness: '亮度', contrast: '对比度', saturation: '饱和度'
+                                }).map(([k, label]) => {
+                                    const val = r.sub_scores && r.sub_scores[k];
+                                    return val !== undefined ? `<div class="detail-item"><span>${label}</span><span>${val.toFixed(4)}</span></div>` : '';
+                                }).join('')}
+                            </div>
+                        </details>
+                    </div>
+                    <div class="result-explanation">${r.explanation}</div>
+                    <div class="result-bbox">bbox: [${r.bbox.join(', ')}]</div>
+                </div>
+            `;
+        }
+
+        // --- Navigation ---
+        function navigateResult(delta) {
+            currentIdx = Math.max(0, Math.min(allResults.length - 1, currentIdx + delta));
+            renderCurrentResult();
+            updateNav();
+        }
+
+        function updateNav() {
+            if (allResults.length <= 1) return;
+            document.getElementById('navInfo').textContent = `${currentIdx + 1} / ${allResults.length}`;
+            document.getElementById('btnPrev').disabled = currentIdx === 0;
+            document.getElementById('btnNext').disabled = currentIdx === allResults.length - 1;
+        }
+
+        // --- Download ---
+        function downloadCrop(idx) {
+            const r = allResults[idx];
+            if (!r || !r.crop_image) return;
             const link = document.createElement('a');
-            link.href = currentResult.crop_image;
-            link.download = 'crop_result.jpg';
+            link.href = r.crop_image;
+            link.download = (r.filename || 'crop').replace(/\.[^.]+$/, '') + '_crop.jpg';
             link.click();
         }
 
-        function exportCoords() {
-            if (!currentResult) return;
-            const data = {
-                bbox: currentResult.bbox,
-                score: currentResult.score,
-                explanation: currentResult.explanation,
-                sub_scores: currentResult.sub_scores
-            };
-            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        function downloadAllCrops() {
+            for (let i = 0; i < allResults.length; i++) {
+                setTimeout(() => downloadCrop(i), i * 300);
+            }
+        }
+
+        function exportAllCoords() {
+            const coords = allResults.map(r => ({
+                filename: r.filename,
+                bbox: r.bbox,
+                score: r.score,
+                explanation: r.explanation,
+                sub_scores: r.sub_scores,
+            }));
+            const blob = new Blob([JSON.stringify(coords, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -319,13 +282,13 @@
             URL.revokeObjectURL(url);
         }
 
-        // Weight slider listeners
-        ['wAesthetic', 'wSaliency', 'wComposition', 'wSubject', 'wTechnical'].forEach(id => {
+        // --- Weight sliders ---
+        ['wAesthetic', 'wSaliency', 'wComposition', 'wSubject', 'wTechnical', 'wAreaPrior'].forEach(id => {
             const el = document.getElementById(id);
             const valEl = document.getElementById(id + 'Val');
-            el.addEventListener('input', function() {
-                valEl.textContent = this.value;
-            });
+            if (el && valEl) {
+                el.addEventListener('input', function() { valEl.textContent = this.value; });
+            }
         });
     </script>
 </body>

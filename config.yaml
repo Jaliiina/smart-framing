@@ -3,12 +3,13 @@
 
 candidate_generation:
   grid_size: 8          # NxN grid points (6 or 8)
-  area_ratios: [0.18, 0.25, 0.33, 0.45, 0.60, 0.75]
+  area_ratios: [0.20, 0.22, 0.25, 0.28, 0.30, 0.35]
   aspect_ratios: [1.0, 1.333, 0.75, 1.778, 0.5625]  # 1:1, 4:3, 3:4, 16:9, 9:16
   use_original_ratio: true
-  top_k: 300
-  min_area_ratio: 0.10   # filter candidates smaller than this * image area
-  max_area_ratio: 0.85   # filter candidates larger than this * image area
+  preserve_original_aspect: true  # only generate candidates with original image aspect ratio
+  top_k: 200
+  min_area_ratio: 0.15   # filter candidates smaller than this * image area
+  max_area_ratio: 0.45   # filter candidates larger than this * image area
   min_aspect_ratio: 0.5  # filter extreme aspect ratios
   max_aspect_ratio: 2.0
   nms_iou_threshold: 0.7
@@ -42,16 +43,16 @@ models:
 
 fusion:
   weights:
-    aesthetic: 0.25
-    saliency: 0.22
-    composition: 0.22
-    subject: 0.18
+    aesthetic: 0.20
+    saliency: 0.18
+    composition: 0.18
+    subject: 0.16
     technical: 0.05
-    area_prior: 0.08
+    area_prior: 0.18
   area_prior:
-    ideal_range: [0.25, 0.60]
-    large_penalty_start: 0.70
-    max_allowed_without_reason: 0.85
+    ideal_range: [0.22, 0.32]
+    large_penalty_start: 0.40
+    max_allowed_without_reason: 0.50
   # Fallback strategies
   saliency_uniform_std_threshold: 0.05
   saliency_uniform_weight_reduction: 0.10

@@ -6,6 +6,7 @@ import base64
 import io
 import os
 import sys
+import tempfile
 import time
 import json
 from pathlib import Path
@@ -18,21 +19,36 @@ os.environ.setdefault("YOLO_SETTINGS_DIR", _yolo_settings_dir)
 import cv2
 import numpy as np
 from flask import Flask, jsonify, render_template, request
+from flask.json.provider import DefaultJSONProvider
 
 # Add parent directory to path so we can import src
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.pipeline import AestheticCropper
 from src.utils import load_config, draw_bbox, load_image
 
+
+class NumpyJSONProvider(DefaultJSONProvider):
+    """Custom JSON provider that handles numpy types."""
+
+    def default(self, o):
+        if isinstance(o, (np.integer,)):
+            return int(o)
+        if isinstance(o, (np.floating,)):
+            return float(o)
+        if isinstance(o, np.ndarray):
+            return o.tolist()
+        return super().default(o)
+
+
 app = Flask(__name__)
+app.json_provider_class = NumpyJSONProvider
+app.json = NumpyJSONProvider(app)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32MB max upload
 
 # Global cropper instance (initialized on first request)
 cropper: AestheticCropper = None
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-UPLOAD_DIR = PROJECT_ROOT / "uploads"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
-UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
@@ -73,19 +89,19 @@ def crop_image():
     if file.filename == "":
         return jsonify({"error": "No selected file"}), 400
 
-    # Save uploaded file
-    timestamp = int(time.time() * 1000)
+    # Read uploaded file into temp file (auto-deleted after processing)
     ext = Path(file.filename).suffix or ".jpg"
-    upload_path = UPLOAD_DIR / f"upload_{timestamp}{ext}"
-    file.save(str(upload_path))
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
 
     try:
         # Process
         cr = get_cropper()
-        result = cr.process(str(upload_path))
+        result = cr.process(tmp_path)
 
         # Prepare visualization
-        image = load_image(str(upload_path))
+        image = load_image(tmp_path)
         vis = draw_bbox(image, result.best_bbox, f"score={result.best_score:.3f}")
 
         # Prepare response
@@ -127,6 +143,11 @@ def crop_image():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 @app.route("/api/batch", methods=["POST"])
@@ -143,24 +164,41 @@ def batch_process():
         if file.filename == "":
             continue
 
-        timestamp = int(time.time() * 1000)
         ext = Path(file.filename).suffix or ".jpg"
-        upload_path = UPLOAD_DIR / f"batch_{timestamp}_{file.filename}"
-        file.save(str(upload_path))
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            file.save(tmp.name)
+            tmp_path = tmp.name
 
         try:
-            result = cr.process(str(upload_path))
+            result = cr.process(tmp_path)
+            image = load_image(tmp_path)
+            vis = draw_bbox(image, result.best_bbox, f"score={result.best_score:.3f}")
             results.append({
                 "filename": file.filename,
-                "bbox": list(result.best_bbox),
-                "score": round(result.best_score, 4),
+                "bbox": [int(x) for x in result.best_bbox],
+                "score": float(round(float(result.best_score), 4)),
                 "explanation": result.explanation,
+                "original_image": image_to_base64(vis),
+                "crop_image": image_to_base64(result.best_crop),
+                "sub_scores": {
+                    "aesthetic": float(round(float(result.best_sub_scores.aesthetic), 4)),
+                    "saliency": float(round(float(result.best_sub_scores.saliency), 4)),
+                    "composition": float(round(float(result.best_sub_scores.composition), 4)),
+                    "subject": float(round(float(result.best_sub_scores.subject), 4)),
+                    "technical": float(round(float(result.best_sub_scores.technical), 4)),
+                    "area_prior": float(round(float(result.best_sub_scores.area_prior), 4)),
+                },
             })
         except Exception as e:
             results.append({
                 "filename": file.filename,
                 "error": str(e),
             })
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
     return jsonify({"results": results})
 

@@ -21,6 +21,7 @@ class CandidateGenerator:
         self.area_ratios: List[float] = cg.get("area_ratios", [0.35, 0.45, 0.60, 0.75, 0.90])
         self.aspect_ratios: List[float] = cg.get("aspect_ratios", [1.0, 1.333, 0.75, 1.778, 0.5625])
         self.use_original_ratio: bool = cg.get("use_original_ratio", True)
+        self.preserve_original_aspect: bool = cg.get("preserve_original_aspect", False)
         self.top_k: int = cg.get("top_k", 150)
         self.min_area_ratio: float = cg.get("min_area_ratio", 0.10)
         self.max_area_ratio: float = cg.get("max_area_ratio", 0.95)
@@ -118,11 +119,15 @@ class CandidateGenerator:
         gx = np.linspace(0, w, self.grid_size + 2, dtype=int)[1:-1]
         gy = np.linspace(0, h, self.grid_size + 2, dtype=int)[1:-1]
 
-        aspect_ratios = list(self.aspect_ratios)
-        if self.use_original_ratio:
-            orig_ratio = w / max(1, h)
-            if orig_ratio not in aspect_ratios:
-                aspect_ratios.append(orig_ratio)
+        if self.preserve_original_aspect:
+            # Only use the original image aspect ratio
+            aspect_ratios = [w / max(1, h)]
+        else:
+            aspect_ratios = list(self.aspect_ratios)
+            if self.use_original_ratio:
+                orig_ratio = w / max(1, h)
+                if orig_ratio not in aspect_ratios:
+                    aspect_ratios.append(orig_ratio)
 
         for cx in gx:
             for cy in gy:
@@ -188,11 +193,14 @@ class CandidateGenerator:
                 peaks.append((cx, cy))
 
         # Generate candidates around each peak
-        aspect_ratios = list(self.aspect_ratios)
-        if self.use_original_ratio:
-            orig_ratio = w / max(1, h)
-            if orig_ratio not in aspect_ratios:
-                aspect_ratios.append(orig_ratio)
+        if self.preserve_original_aspect:
+            aspect_ratios = [w / max(1, h)]
+        else:
+            aspect_ratios = list(self.aspect_ratios)
+            if self.use_original_ratio:
+                orig_ratio = w / max(1, h)
+                if orig_ratio not in aspect_ratios:
+                    aspect_ratios.append(orig_ratio)
 
         for cx, cy in peaks:
             for ar in aspect_ratios:

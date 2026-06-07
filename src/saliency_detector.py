@@ -132,8 +132,10 @@ class SaliencyDetector:
     ) -> List[float]:
         """Compute saliency preservation score for each candidate bbox.
 
-        Score = 0.55 * coverage + 0.35 * density
-                - 0.25 * boundary_cut - 0.20 * center_offset
+        Score = 0.30 * coverage_norm + 0.35 * density
+                - 0.30 * boundary_cut - 0.30 * center_offset
+
+        coverage_norm normalizes coverage by bbox area to remove size bias.
 
         Args:
             saliency_map: (H, W) float32 in [0, 1].
@@ -144,6 +146,7 @@ class SaliencyDetector:
             List of saliency preservation scores.
         """
         h, w = image_shape[:2]
+        img_area = max(1, h * w)
         total_sal = saliency_map.sum() + 1e-9
         scores = []
 
@@ -152,10 +155,15 @@ class SaliencyDetector:
 
         for bbox in bboxes:
             x1, y1, x2, y2 = bbox
+            bbox_area = (x2 - x1) * (y2 - y1)
+            area_ratio = bbox_area / img_area
 
             # 1. Coverage: fraction of total saliency inside bbox
             region = saliency_map[max(0, y1):y2, max(0, x1):x2]
             coverage = float(region.sum()) / total_sal
+            # Normalize coverage by area_ratio to remove size bias:
+            # A small bbox with high coverage_per_area is better than a large one.
+            coverage_norm = coverage / max(area_ratio, 0.05)
             density = float(region.mean()) if region.size > 0 else 0.0
 
             # 2. Center offset: distance from saliency centroid to bbox visual center
@@ -194,10 +202,10 @@ class SaliencyDetector:
             boundary_cut = boundary_sal / max(1, boundary_count) if boundary_count > 0 else 0.0
 
             score = (
-                0.55 * coverage
+                0.30 * coverage_norm
                 + 0.35 * density
-                - 0.25 * boundary_cut
-                - 0.20 * center_offset
+                - 0.30 * boundary_cut
+                - 0.30 * center_offset
             )
             scores.append(max(0.0, score))
 
