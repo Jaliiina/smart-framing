@@ -81,11 +81,11 @@ class FusionModule:
             w_aesthetic += self.saliency_uniform_reduction * 0.5
             w_composition += self.saliency_uniform_reduction * 0.5
 
-        # Fallback: if no subject detected, redistribute subject weight
+        # If no meaningful subject was detected, exclude that dimension.
+        # The remaining active weights are normalized below. Avoid transferring
+        # subject weight to saliency because low-level saliency can overvalue
+        # textured ground, debris, or other high-contrast distractions.
         if not has_subject:
-            redistribute = w_subject / 2.0
-            w_aesthetic += redistribute
-            w_saliency += redistribute
             w_subject = 0.0
 
         # Normalize weights to sum to 1

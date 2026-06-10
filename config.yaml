@@ -11,7 +11,7 @@ candidate_generation:
   min_area_ratio: 0.15   # filter candidates smaller than this * image area
   max_area_ratio: 0.45   # filter candidates larger than this * image area
   min_aspect_ratio: 0.5  # filter extreme aspect ratios
-  max_aspect_ratio: 2.0
+  max_aspect_ratio: 3.0
   nms_iou_threshold: 0.7
   saliency_supplement: true
   saliency_peak_threshold: 0.5
@@ -40,15 +40,24 @@ models:
     clip_model: "ViT-B/32"
     device: "cpu"
     use_fallback: true   # fall back to hand-crafted features if model unavailable
+    use_clip_prompt_fallback: true
+    positive_prompts:
+      - "a well-composed professional photograph"
+      - "a visually pleasing photograph with a clear subject"
+      - "a balanced scenic photograph"
+    negative_prompts:
+      - "a cluttered photograph with distracting objects"
+      - "an accidental close-up of ground or debris"
+      - "a poorly composed photograph"
 
 fusion:
   weights:
-    aesthetic: 0.20
-    saliency: 0.18
-    composition: 0.18
-    subject: 0.16
-    technical: 0.05
-    area_prior: 0.18
+    aesthetic: 0.16
+    saliency: 0.22
+    composition: 0.05
+    subject: 0.21
+    technical: 0.23
+    area_prior: 0.13
   area_prior:
     ideal_range: [0.22, 0.32]
     large_penalty_start: 0.40

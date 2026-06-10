@@ -73,9 +73,7 @@ class CandidateGenerator:
 
         # --- Keep top-K ---
         if len(filtered) > self.top_k:
-            # Subsample evenly
-            idx = np.linspace(0, len(filtered) - 1, self.top_k).astype(int)
-            filtered = [filtered[i] for i in idx]
+            filtered = filtered[:self.top_k]
 
         return filtered
 

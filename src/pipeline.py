@@ -112,6 +112,7 @@ class AestheticCropper:
         subject_scores = self.subject_det.score_candidates(
             candidates, detected_objects, image.shape
         )
+        has_subject = any(score is not None for score in subject_scores)
 
         # 4e. Technical quality scores
         technical_scores = self.tech_scorer.score_candidates(image, candidates)

@@ -24,10 +24,31 @@ class AestheticScorer:
         self.clip_model: str = acfg.get("clip_model", "ViT-B/32")
         self.device: str = acfg.get("device", "cpu")
         self.use_fallback: bool = acfg.get("use_fallback", True)
+        self.use_clip_prompt_fallback: bool = acfg.get(
+            "use_clip_prompt_fallback", True
+        )
+        self.positive_prompts: List[str] = acfg.get(
+            "positive_prompts",
+            [
+                "a well-composed professional photograph",
+                "a visually pleasing photograph with a clear subject",
+                "a balanced scenic photograph",
+            ],
+        )
+        self.negative_prompts: List[str] = acfg.get(
+            "negative_prompts",
+            [
+                "a cluttered photograph with distracting objects",
+                "an accidental close-up of ground or debris",
+                "a poorly composed photograph",
+            ],
+        )
 
         self._clip_model = None
         self._aesthetic_head = None
         self._preprocess = None
+        self._positive_text_features = None
+        self._negative_text_features = None
         self._model_loaded = False
 
     def _load_model(self):
@@ -38,10 +59,12 @@ class AestheticScorer:
             import torch
             import clip  # type: ignore
 
-            if Path(self.model_path).exists():
+            if Path(self.model_path).exists() or self.use_clip_prompt_fallback:
                 self._clip_model, self._preprocess = clip.load(
                     self.clip_model, device=self.device
                 )
+
+            if Path(self.model_path).exists() and self._clip_model is not None:
                 state = torch.load(self.model_path, map_location=self.device)
                 # LAION aesthetic predictor: linear layer on top of CLIP embeddings
                 embed_dim = self._clip_model.visual.output_dim
@@ -55,7 +78,20 @@ class AestheticScorer:
                     self._aesthetic_head.load_state_dict(state)
                 self._aesthetic_head.eval()
                 logger.info(f"Aesthetic predictor loaded from {self.model_path}")
-            else:
+            elif self._clip_model is not None and self.use_clip_prompt_fallback:
+                positive_tokens = clip.tokenize(self.positive_prompts).to(self.device)
+                negative_tokens = clip.tokenize(self.negative_prompts).to(self.device)
+                with torch.no_grad():
+                    positive = self._clip_model.encode_text(positive_tokens).float()
+                    negative = self._clip_model.encode_text(negative_tokens).float()
+                self._positive_text_features = positive / positive.norm(
+                    dim=-1, keepdim=True
+                )
+                self._negative_text_features = negative / negative.norm(
+                    dim=-1, keepdim=True
+                )
+                logger.info("Using CLIP prompt-based aesthetic fallback.")
+            elif not Path(self.model_path).exists():
                 logger.warning(
                     f"Aesthetic weights not found at {self.model_path}. Using fallback."
                 )
@@ -83,6 +119,12 @@ class AestheticScorer:
 
         if self._clip_model is not None and self._aesthetic_head is not None:
             return self._score_clip(image, bboxes)
+        elif (
+            self._clip_model is not None
+            and self._positive_text_features is not None
+            and self._negative_text_features is not None
+        ):
+            return self._score_clip_prompts(image, bboxes)
         elif self.use_fallback:
             return self._score_fallback(image, bboxes)
         else:
@@ -114,6 +156,34 @@ class AestheticScorer:
                 features = self._clip_model.encode_image(chunk).float()
                 scores = self._aesthetic_head(features).squeeze(-1).cpu().numpy()
             all_scores.extend([float(s) for s in scores])
+
+        return all_scores
+
+    def _score_clip_prompts(
+        self, image: np.ndarray, bboxes: List[BBox]
+    ) -> List[float]:
+        """Score semantic framing quality using positive and negative prompts."""
+        import torch
+        from PIL import Image
+
+        crops = []
+        for bbox in bboxes:
+            x1, y1, x2, y2 = bbox
+            crop = image[y1:y2, x1:x2]
+            crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            crops.append(self._preprocess(Image.fromarray(crop_rgb)))
+
+        all_scores = []
+        chunk_size = 32
+        for i in range(0, len(crops), chunk_size):
+            chunk = torch.stack(crops[i:i + chunk_size]).to(self.device)
+            with torch.no_grad():
+                features = self._clip_model.encode_image(chunk).float()
+                features = features / features.norm(dim=-1, keepdim=True)
+                positive = features @ self._positive_text_features.T
+                negative = features @ self._negative_text_features.T
+                scores = positive.mean(dim=1) - negative.mean(dim=1)
+            all_scores.extend(float(score) for score in scores.cpu().numpy())
 
         return all_scores
 
