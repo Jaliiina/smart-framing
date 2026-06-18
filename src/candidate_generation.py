@@ -26,11 +26,13 @@ class CandidateGenerator:
         self.min_area_ratio: float = cg.get("min_area_ratio", 0.10)
         self.max_area_ratio: float = cg.get("max_area_ratio", 0.95)
         self.min_aspect_ratio: float = cg.get("min_aspect_ratio", 0.5)
-        self.max_aspect_ratio: float = cg.get("max_aspect_ratio", 2.0)
+        #self.max_aspect_ratio: float = cg.get("max_aspect_ratio", 2.0)
+        self.max_aspect_ratio: float = cg.get("max_aspect_ratio", 2.5)
         self.nms_iou_threshold: float = cg.get("nms_iou_threshold", 0.7)
         self.saliency_supplement: bool = cg.get("saliency_supplement", True)
         self.saliency_peak_threshold: float = cg.get("saliency_peak_threshold", 0.5)
-        self.saliency_smooth_sigma: float = cg.get("saliency_smooth_sigma", 5.0)
+        #self.saliency_smooth_sigma: float = cg.get("saliency_smooth_sigma", 5.0)
+        self.saliency_smooth_sigma: float = cg.get("saliency_smooth_sigma", 6.0)
 
     def generate(
         self,
@@ -110,15 +112,14 @@ class CandidateGenerator:
         return 0.45 * coverage + 0.35 * density + 0.20 * scale_prior
 
     def _grid_anchors(self, h: int, w: int, img_area: int) -> List[BBox]:
-        """Generate GAIC-style grid anchor candidates."""
+        """Generate GAIC-style grid anchor candidates with dense center sampling."""
         candidates: List[BBox] = []
 
         # Grid centers (evenly spaced, including near-edges)
-        gx = np.linspace(0, w, self.grid_size + 2, dtype=int)[1:-1]
-        gy = np.linspace(0, h, self.grid_size + 2, dtype=int)[1:-1]
+        gx = np.linspace(0.05, 0.95, self.grid_size + 2, dtype=float)[1:-1]
+        gy = np.linspace(0.05, 0.95, self.grid_size + 2, dtype=float)[1:-1]
 
         if self.preserve_original_aspect:
-            # Only use the original image aspect ratio
             aspect_ratios = [w / max(1, h)]
         else:
             aspect_ratios = list(self.aspect_ratios)
@@ -127,8 +128,10 @@ class CandidateGenerator:
                 if orig_ratio not in aspect_ratios:
                     aspect_ratios.append(orig_ratio)
 
-        for cx in gx:
-            for cy in gy:
+        for cx_pct in gx:
+            for cy_pct in gy:
+                cx = int(cx_pct * w)
+                cy = int(cy_pct * h)
                 for ar in aspect_ratios:
                     for area_r in self.area_ratios:
                         area = int(img_area * area_r)
@@ -143,7 +146,6 @@ class CandidateGenerator:
                         x2 = x1 + crop_w
                         y2 = y1 + crop_h
                         bbox = clamp_bbox((x1, y1, x2, y2), h, w)
-                        # Verify clamped box still has reasonable size
                         bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
                         if bw >= 8 and bh >= 8:
                             candidates.append(bbox)

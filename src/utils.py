@@ -39,6 +39,7 @@ class SubScores:
     subject: float = 0.0
     technical: float = 0.0
     area_prior: float = 0.0
+    alignment: float = 0.0
 
     # Detailed composition breakdown
     thirds: float = 0.0
@@ -52,6 +53,9 @@ class SubScores:
     brightness: float = 0.0
     contrast: float = 0.0
     saturation: float = 0.0
+
+    # Person & composition enhancement
+    person_completeness: float = 0.5
 
 
 @dataclass
@@ -74,6 +78,8 @@ class CropResult:
     explanation: str = ""
     saliency_map: Optional[np.ndarray] = None
     detected_objects: List[DetectedObject] = field(default_factory=list)
+    intent: str = "other"
+    all_candidates: List[CandidateResult] = field(default_factory=list)  # full list
 
 
 # ---------------------------------------------------------------------------

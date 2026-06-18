@@ -28,6 +28,7 @@ class SaliencyDetector:
         self.weights_path: str = u2cfg.get("weights_path", "models/u2net.pth")
         self.lite_weights_path: str = u2cfg.get("lite_weights_path", "models/u2netp.pth")
         self.use_lite: bool = u2cfg.get("use_lite", True)
+        self.force_fallback: bool = u2cfg.get("force_fallback", False)
         self.device: str = u2cfg.get("device", "cpu")
         self.input_size: int = config.get("preprocessing", {}).get("u2net_input_size", 320)
 
@@ -36,6 +37,31 @@ class SaliencyDetector:
         )
         self._model = None
         self._model_loaded = False
+
+    def detect_dual(
+        self, image: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, bool, bool]:
+        """Run both U2-Net and fallback saliency detection.
+
+        Args:
+            image: BGR image (H, W, 3).
+
+        Returns:
+            (u2net_map, fallback_map, u2net_is_uniform, fallback_is_uniform).
+            If U2-Net is unavailable, u2net_map equals fallback_map.
+        """
+        self._load_model()
+
+        if self._model is None or self.force_fallback:
+            fb = self._detect_fallback(image)
+            fb_uniform = float(fb.std()) < self.uniform_std_threshold
+            return fb, fb, fb_uniform, fb_uniform
+
+        u2net_map = self._detect_u2net(image)
+        fallback_map = self._detect_fallback(image)
+        u2net_uniform = float(u2net_map.std()) < self.uniform_std_threshold
+        fallback_uniform = float(fallback_map.std()) < self.uniform_std_threshold
+        return u2net_map, fallback_map, u2net_uniform, fallback_uniform
 
     def _load_model(self):
         """Lazily load the U2-Net model."""
@@ -78,10 +104,10 @@ class SaliencyDetector:
         """
         self._load_model()
 
-        if self._model is not None:
-            sal = self._detect_u2net(image)
-        else:
+        if self.force_fallback or self._model is None:
             sal = self._detect_fallback(image)
+        else:
+            sal = self._detect_u2net(image)
 
         # Check uniformity
         is_uniform = float(sal.std()) < self.uniform_std_threshold
@@ -210,3 +236,25 @@ class SaliencyDetector:
             scores.append(max(0.0, score))
 
         return scores
+
+    def score_candidates_dual(
+        self,
+        u2net_map: np.ndarray,
+        fallback_map: np.ndarray,
+        bboxes: List[BBox],
+        image_shape: Tuple[int, int],
+    ) -> Tuple[List[float], List[float]]:
+        """Score candidates with both U2Net and fallback saliency maps.
+
+        Args:
+            u2net_map: (H, W) U2Net saliency map.
+            fallback_map: (H, W) fallback CV saliency map.
+            bboxes: List of candidate bboxes.
+            image_shape: (H, W) of the original image.
+
+        Returns:
+            (u2net_scores, fallback_scores): saliency preservation scores per candidate.
+        """
+        u2_scores = self.score_candidates(u2net_map, bboxes, image_shape)
+        fb_scores = self.score_candidates(fallback_map, bboxes, image_shape)
+        return u2_scores, fb_scores
