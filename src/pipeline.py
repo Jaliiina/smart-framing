@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from pathlib import Path
@@ -66,8 +67,34 @@ class AestheticCropper:
         self.fusion = FusionModule(self.config)
         self.explainer = ExplanationGenerator(self.config)
 
+        # Print model info
+        u2net_cfg = self.config.get("models", {}).get("u2net", {})
+        yolo_cfg = self.config.get("models", {}).get("yolo", {})
+        u2net_path = u2net_cfg.get("weights_path" if not u2net_cfg.get("use_lite", False) else "lite_weights_path", "models/u2netp.pth")
+        u2net_name = "U2Net" if not u2net_cfg.get("use_lite", False) else "U2NetP (lite)"
+        yolo_model = yolo_cfg.get("model_name", "yolov8n.pt")
+        yolo_conf = yolo_cfg.get("confidence_threshold", 0.3)
+        aesthetic_device = self.config.get("aesthetic", {}).get("device", "cuda")
+        u2net_device = u2net_cfg.get("device", "cuda")
+        yolo_device = yolo_cfg.get("device", "cuda")
+        print(
+            f"[Model Info] saliency={u2net_name} [{u2net_path}]; "
+            f"subject={yolo_model} (conf={yolo_conf}); "
+            f"aesthetic=CLIP zero-shot prompts (ViT-L/14) [{self.aesthetic_scorer.model_path if hasattr(self.aesthetic_scorer, 'model_path') else 'models/aesthetic_predictor.pth'}]; "
+            f"u2net_device={u2net_device}, yolo_device={yolo_device}, aesthetic_device={aesthetic_device}"
+        )
+
     def process(self, image_path: str) -> CropResult:
         """Process a single image through the full pipeline.
+
+        Steps:
+          0. Intent classification (multimodal LLM) → choose strategy
+          1. Run U2-Net once → saliency map
+          2. Run YOLOv8 once → detected objects
+          3. Generate candidates (grid + saliency-guided)
+          4. Score each candidate
+          5. Fuse scores and select best
+          6. Generate explanation
 
         Args:
             image_path: Path to input image.
@@ -76,11 +103,14 @@ class AestheticCropper:
             CropResult with best bbox, crop, scores, explanation, etc.
         """
         start_time = time.time()
+
         image = load_image(image_path)
         h, w = image.shape[:2]
 
-        # --- Step 1: Run U2-Net once → saliency map ---
-        saliency_map, is_uniform = self.saliency_det.detect(image)
+        # --- Step 1: Run dual saliency (U2-Net + fallback) ---
+        saliency_map, fallback_sal_map, is_uniform, fallback_uniform = (
+            self.saliency_det.detect_dual(image)
+        )
 
         # --- Step 2: Run YOLOv8 once → detected objects ---
         detected_objects = self.subject_det.detect(image)
@@ -91,17 +121,29 @@ class AestheticCropper:
         logger.info(f"Generated {len(candidates)} candidates for {image_path}")
 
         if len(candidates) == 0:
-            # Fallback: use the whole image
             candidates = [(0, 0, w, h)]
+
+        # Compute per-candidate scores for both saliency maps
+        u2net_saliency_scores = self.saliency_det.score_candidates(
+            saliency_map, candidates, image.shape
+        )
+        fallback_saliency_scores = (
+            self.saliency_det.score_candidates(
+                fallback_sal_map, candidates, image.shape
+            )
+            if fallback_sal_map is not saliency_map
+            else u2net_saliency_scores
+        )
 
         # --- Step 4: Score each candidate ---
         # 4a. Aesthetic scores
         aesthetic_scores = self.aesthetic_scorer.score_candidates(image, candidates)
 
-        # 4b. Saliency preservation scores
-        saliency_scores = self.saliency_det.score_candidates(
-            saliency_map, candidates, image.shape
-        )
+        # 4b. Saliency preservation scores (primary map)
+        saliency_scores = u2net_saliency_scores
+
+        # 4b-alt. Dual saliency agreement scores (fallback map, used in fusion)
+        dual_saliency_scores = fallback_saliency_scores
 
         # 4c. Composition scores
         composition_scores = self.comp_scorer.score_candidates(
@@ -118,7 +160,7 @@ class AestheticCropper:
         technical_scores = self.tech_scorer.score_candidates(image, candidates)
 
         # --- Step 5: Fuse scores and select best ---
-        best, top_k = self.fusion.fuse(
+        best, top_k, all_ranked = self.fusion.fuse(
             bboxes=candidates,
             aesthetic_scores=aesthetic_scores,
             saliency_scores=saliency_scores,
@@ -127,8 +169,14 @@ class AestheticCropper:
             technical_scores=technical_scores,
             saliency_is_uniform=is_uniform,
             has_subject=has_subject,
-            image_shape=image.shape,
+            image_shape=image.shape[:2],
+            saliency_map=saliency_map,
+            return_all=True,  # Get all ranked candidates for evaluation
+            dual_saliency_scores=dual_saliency_scores,
         )
+        
+        # Use all_ranked if available, otherwise fall back to candidates
+        all_candidates = all_ranked if all_ranked else candidates
 
         # --- Step 6: Generate explanation ---
         explanation = self.explainer.generate(best.sub_scores, has_subject)
@@ -153,6 +201,7 @@ class AestheticCropper:
             explanation=explanation,
             saliency_map=saliency_map,
             detected_objects=detected_objects,
+            all_candidates=all_candidates,
         )
 
     def process_batch(
@@ -206,12 +255,16 @@ class AestheticCropper:
         logger.info(f"Batch processed {len(results)} images -> {output_dir}")
         return results
 
+
     def process_with_custom_weights(
         self,
         image_path: str,
         custom_weights: Dict[str, float],
     ) -> CropResult:
         """Process an image with custom fusion weights (for ablation/grid search).
+
+        Temporarily disables intent classification so that custom weights
+        are not overridden by the strategy router.
 
         Args:
             image_path: Path to input image.
@@ -236,7 +289,6 @@ class AestheticCropper:
         try:
             return self.process(image_path)
         finally:
-            # Restore original weights
             for k, v in original_weights.items():
                 setattr(self.fusion, f"weight_{k}", v)
 

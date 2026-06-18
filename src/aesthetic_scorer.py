@@ -9,12 +9,40 @@ from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+import torch
+from torch import nn
 
 from .utils import BBox
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Aesthetic MLP matching aesthetic_predictor.pth key names: layers.0, layers.2...
+# ---------------------------------------------------------------------------
+class _AestheticMLP(nn.Module):
+    def __init__(self, embed_dim: int):
+        super().__init__()
+        self.layers = nn.ModuleList([
+            nn.Linear(embed_dim, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 16),
+            nn.Linear(16, 1),
+        ])
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
+# ---------------------------------------------------------------------------
+# AestheticScorer
+# ---------------------------------------------------------------------------
 class AestheticScorer:
     """Score candidate crops using LAION Aesthetic Predictor or fallback."""
 
@@ -23,6 +51,7 @@ class AestheticScorer:
         self.model_path: str = acfg.get("model_path", "models/aesthetic_predictor.pth")
         self.clip_model: str = acfg.get("clip_model", "ViT-B/32")
         self.device: str = acfg.get("device", "cpu")
+        self.use_laion_predictor: bool = acfg.get("use_laion_predictor", False)
         self.use_fallback: bool = acfg.get("use_fallback", True)
         self.use_clip_prompt_fallback: bool = acfg.get(
             "use_clip_prompt_fallback", True
@@ -52,32 +81,49 @@ class AestheticScorer:
         self._model_loaded = False
 
     def _load_model(self):
-        """Lazily load CLIP + aesthetic head."""
+        """Lazily load CLIP + optional aesthetic head."""
         if self._model_loaded:
             return
         try:
-            import torch
             import clip  # type: ignore
 
-            if Path(self.model_path).exists() or self.use_clip_prompt_fallback:
+            need_clip = self.use_laion_predictor or self.use_clip_prompt_fallback
+            if need_clip:
                 self._clip_model, self._preprocess = clip.load(
                     self.clip_model, device=self.device
                 )
 
-            if Path(self.model_path).exists() and self._clip_model is not None:
-                state = torch.load(self.model_path, map_location=self.device)
-                # LAION aesthetic predictor: linear layer on top of CLIP embeddings
-                embed_dim = self._clip_model.visual.output_dim
-                self._aesthetic_head = torch.nn.Linear(embed_dim, 1).to(self.device)
-                if isinstance(state, dict) and "weight" in state:
-                    self._aesthetic_head.load_state_dict(state)
-                elif isinstance(state, dict) and "model" in state:
-                    self._aesthetic_head.load_state_dict(state["model"])
+            # Branch 1: LAION predictor explicitly enabled
+            if self.use_laion_predictor:
+                if Path(self.model_path).exists() and self._clip_model is not None:
+                    state = torch.load(self.model_path, map_location=self.device)
+                    embed_dim = self._clip_model.visual.output_dim
+                    self._aesthetic_head = _AestheticMLP(embed_dim).to(self.device)
+                    if isinstance(state, dict) and "model" in state:
+                        self._aesthetic_head.load_state_dict(state["model"])
+                    else:
+                        self._aesthetic_head.load_state_dict(state)
+                    self._aesthetic_head.eval()
+                    logger.info(f"Aesthetic predictor loaded from {self.model_path}")
                 else:
-                    # Try loading directly
-                    self._aesthetic_head.load_state_dict(state)
-                self._aesthetic_head.eval()
-                logger.info(f"Aesthetic predictor loaded from {self.model_path}")
+                    logger.warning(
+                        f"Aesthetic weights not found at {self.model_path}. "
+                        "Falling back to CLIP prompt-based scoring."
+                    )
+                    if self.use_clip_prompt_fallback and self._clip_model is not None:
+                        positive_tokens = clip.tokenize(self.positive_prompts).to(self.device)
+                        negative_tokens = clip.tokenize(self.negative_prompts).to(self.device)
+                        with torch.no_grad():
+                            positive = self._clip_model.encode_text(positive_tokens).float()
+                            negative = self._clip_model.encode_text(negative_tokens).float()
+                        self._positive_text_features = positive / positive.norm(
+                            dim=-1, keepdim=True
+                        )
+                        self._negative_text_features = negative / negative.norm(
+                            dim=-1, keepdim=True
+                        )
+                        logger.info("Using CLIP prompt-based aesthetic fallback.")
+            # Branch 2: LAION disabled — use CLIP prompts or hand-crafted fallback
             elif self._clip_model is not None and self.use_clip_prompt_fallback:
                 positive_tokens = clip.tokenize(self.positive_prompts).to(self.device)
                 negative_tokens = clip.tokenize(self.negative_prompts).to(self.device)
@@ -106,15 +152,7 @@ class AestheticScorer:
         image: np.ndarray,
         bboxes: List[BBox],
     ) -> List[float]:
-        """Score each candidate crop for aesthetic quality.
-
-        Args:
-            image: Original BGR image.
-            bboxes: List of candidate bboxes.
-
-        Returns:
-            List of raw aesthetic scores (before normalization).
-        """
+        """Score each candidate crop for aesthetic quality."""
         self._load_model()
 
         if self._clip_model is not None and self._aesthetic_head is not None:
@@ -132,7 +170,6 @@ class AestheticScorer:
 
     def _score_clip(self, image: np.ndarray, bboxes: List[BBox]) -> List[float]:
         """Score using CLIP + aesthetic head, with batch chunking."""
-        import torch
         from PIL import Image
 
         crops = []
@@ -147,7 +184,6 @@ class AestheticScorer:
         if len(crops) == 0:
             return []
 
-        # Batch inference in chunks of 32 to avoid OOM
         all_scores = []
         chunk_size = 32
         for i in range(0, len(crops), chunk_size):
@@ -163,7 +199,6 @@ class AestheticScorer:
         self, image: np.ndarray, bboxes: List[BBox]
     ) -> List[float]:
         """Score semantic framing quality using positive and negative prompts."""
-        import torch
         from PIL import Image
 
         crops = []
@@ -199,7 +234,6 @@ class AestheticScorer:
                 scores.append(0.0)
                 continue
 
-            # Compute 6 features same as original SmartFramer
             img_lab = cv2.cvtColor(crop, cv2.COLOR_BGR2Lab)
             l, a, b_ch = cv2.split(img_lab)
             blur = cv2.GaussianBlur(img_lab, (0, 0), 7)
@@ -213,7 +247,6 @@ class AestheticScorer:
                 s /= s.max()
             saliency_mean = float(s.mean())
 
-            # Rule of thirds
             ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
             xs_n = xs / max(1, w - 1)
             ys_n = ys / max(1, h - 1)
@@ -237,11 +270,8 @@ class AestheticScorer:
             entropy = float(-(p * np.log(p + 1e-9)).sum() / math.log(len(p)))
 
             size_ratio = float((h * w) / (image.shape[0] * image.shape[1]))
-
-            # Compactness: prefer crops near 25% area (matching ground truth pattern)
             compactness = max(0.0, 1.0 - abs(size_ratio - 0.25) / 0.20)
 
-            # Adjusted weights: reduce saliency_mean, increase thirds, replace size_ratio with compactness
             w_arr = np.array([0.22, 0.28, 0.16, 0.10, 0.14, 0.10], dtype=np.float32)
             feats = np.array(
                 [saliency_mean, thirds_alignment, edge_density, color_var, entropy, compactness],
