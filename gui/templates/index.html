@@ -3,293 +3,1431 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AestheticCropper - 智能取景系统</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>AestheticCropper · 智能美学裁剪</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <style>
+        /* ---------- 全局重置 ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 24px;
+            /* 蓝色系背景：抽象渐变 + 极淡纹理 */
+            background-image:
+                url('http://localhost:5000/static/2.jpg'),
+                linear-gradient(145deg,
+                    rgba(160, 195, 215, 0.25) 0%,
+                    rgba(200, 220, 235, 0.15) 40%,
+                    rgba(120, 160, 185, 0.20) 100%),
+                repeating-linear-gradient(45deg,
+                    rgba(255, 255, 255, 0.02) 0px,
+                    rgba(255, 255, 255, 0.02) 2px,
+                    transparent 2px,
+                    transparent 6px),
+                linear-gradient(135deg, #d4e3ed 0%, #eaf2f7 50%, #c8dae5 100%);
+            background-size: cover, auto, cover;
+            background-attachment: fixed, fixed, fixed;
+            background-blend-mode: normal, normal, normal;
+            color: #1e2f3a;
+        }
+
+        
+
+        .container {
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ---------- 毛玻璃卡片 (增强玻璃质感) ---------- */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(20px) saturate(1.4);
+            -webkit-backdrop-filter: blur(20px) saturate(1.4);
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            box-shadow:
+                0 20px 60px rgba(60, 100, 130, 0.12),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+            padding: 24px 28px;
+            margin-bottom: 24px;
+            transition: transform 0.25s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glass-card::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 20%, rgba(200, 225, 240, 0.10), transparent 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .glass-card > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        .glass-card:hover {
+            box-shadow:
+                0 28px 72px rgba(60, 100, 130, 0.16),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        .glass-card-header {
+            background: rgba(255, 255, 255, 0.30);
+            backdrop-filter: blur(24px) saturate(1.5);
+            -webkit-backdrop-filter: blur(24px) saturate(1.5);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+        }
+
+        h1, h2, h3 {
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #1e2f3a;
+        }
+
+        h1 {
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        h1 small {
+            font-weight: 400;
+            font-size: 16px;
+            opacity: 0.65;
+            letter-spacing: 0;
+        }
+        h2 {
+            font-size: 20px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h2 .deco {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #7fa5b9;
+            opacity: 0.6;
+        }
+        h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        /* ---------- 权重面板 (紧凑布局) ---------- */
+        .weights-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 20px;
+            padding: 4px 0 2px;
+        }
+
+        .weight-slider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1 0 160px;
+            min-width: 140px;
+        }
+
+        .weight-slider label {
+            width: 72px;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            color: #1e2f3a;
+            opacity: 0.75;
+            flex-shrink: 0;
+        }
+
+        .weight-slider input[type="range"] {
+            flex: 1;
+            min-width: 70px;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(120, 160, 185, 0.30);
+            border-radius: 4px;
+            outline: none;
+            transition: background 0.2s;
+        }
+
+        .weight-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #7fa5b9;
+            cursor: pointer;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 2px 8px rgba(60, 100, 130, 0.20);
+            transition: transform 0.15s, background 0.2s;
+        }
+
+        .weight-slider input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.12);
+            background: #6c8b9f;
+        }
+
+        .weight-slider input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #7fa5b9;
+            cursor: pointer;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+        }
+
+        .weight-slider span {
+            width: 40px;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 500;
+            color: #1e2f3a;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ---------- 按钮 (蓝色系) ---------- */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 22px;
+            border: none;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: rgba(127, 165, 185, 0.45);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            color: #1e2f3a;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 4px 12px rgba(60, 100, 130, 0.08);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            background: rgba(127, 165, 185, 0.65);
+            box-shadow: 0 8px 24px rgba(60, 100, 130, 0.15);
+        }
+
+        .btn:active {
+            transform: translateY(0px);
+        }
+
+        .btn-primary {
+            background: rgba(108, 139, 159, 0.65);
+            color: #f0f6fa;
+            border-color: rgba(255, 255, 255, 0.45);
+        }
+        .btn-primary:hover {
+            background: rgba(108, 139, 159, 0.85);
+        }
+
+        .btn-secondary {
+            background: rgba(200, 215, 225, 0.50);
+            border-color: rgba(255, 255, 255, 0.30);
+        }
+        .btn-secondary:hover {
+            background: rgba(200, 215, 225, 0.70);
+        }
+
+        .btn-danger {
+            background: rgba(180, 120, 130, 0.50);
+            border-color: rgba(255, 255, 255, 0.30);
+            color: #3d1f1f;
+        }
+        .btn-danger:hover {
+            background: rgba(180, 120, 130, 0.70);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        /* ---------- 上传区域 ---------- */
+        .upload-area {
+            border: 2px dashed rgba(120, 160, 185, 0.40);
+            border-radius: 18px;
+            padding: 36px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .upload-area:hover {
+            border-color: rgba(108, 139, 159, 0.60);
+            background: rgba(255, 255, 255, 0.25);
+            transform: scale(1.005);
+        }
+
+        .upload-area .icon {
+            font-size: 32px;
+            opacity: 0.6;
+        }
+        .upload-area .hint {
+            font-size: 15px;
+            opacity: 0.7;
+            font-weight: 400;
+        }
+        .upload-area .sub-hint {
+            font-size: 13px;
+            opacity: 0.45;
+        }
+
+        /* ---------- 结果展示 (限制图片尺寸) ---------- */
+        .result-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 18px;
+        }
+
+        .result-card {
+            flex: 1 1 260px;
+            min-width: 180px;
+            border-radius: 16px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.20);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.30);
+            transition: transform 0.25s ease, box-shadow 0.3s ease;
+        }
+
+        .result-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(60, 100, 130, 0.10);
+        }
+
+        .result-card img {
+            width: 100%;
+            height: auto;
+            max-height: 320px;
+            object-fit: contain;
+            display: block;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.10);
+        }
+
+        .result-card .info {
+            padding: 12px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1e2f3a;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        /* ---------- 子分数条形图 (蓝色系) ---------- */
+        .subscore-bars {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .subscore-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .subscore-row .label {
+            width: 60px;
+            opacity: 0.7;
+            flex-shrink: 0;
+        }
+
+        .subscore-row .bar-track {
+            flex: 1;
+            height: 5px;
+            background: rgba(120, 160, 185, 0.20);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .subscore-row .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #7fa5b9, #5a7f94);
+            transition: width 0.6s ease;
+            width: 0%;
+        }
+
+        .subscore-row .value {
+            width: 34px;
+            text-align: right;
+            opacity: 0.8;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ---------- 候选列表 ---------- */
+        .candidate-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin-top: 14px;
+        }
+
+        .candidate-item {
+            width: 150px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 14px;
+            padding: 8px 8px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.20);
+            transition: transform 0.2s ease, box-shadow 0.3s ease;
+        }
+
+        .candidate-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(60, 100, 130, 0.08);
+        }
+
+        .candidate-item img {
+            width: 100%;
+            height: auto;
+            max-height: 120px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .candidate-item .score-label {
+            font-size: 12px;
+            font-weight: 500;
+            margin-top: 6px;
+            opacity: 0.8;
+        }
+
+        /* ---------- 批量结果列表 ---------- */
+        .batch-result-item {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            border-bottom: 1px solid rgba(120, 160, 185, 0.12);
+            gap: 8px;
+            transition: background 0.15s;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            margin-bottom: 4px;
+        }
+
+        .batch-result-item:hover {
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        .batch-result-item .file-info {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .batch-result-item .file-info strong {
+            font-weight: 600;
+        }
+
+        .batch-result-item .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .batch-result-item .actions .btn {
+            padding: 5px 12px;
+            font-size: 12px;
+        }
+
+        /* ---------- 历史记录 (玻璃质感) ---------- */
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 240px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            font-size: 13px;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+
+        .history-item:hover {
+            background: rgba(255, 255, 255, 0.22);
+        }
+
+        .history-item .left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .history-item .left .name {
+            font-weight: 500;
+        }
+
+        .history-item .left .meta {
+            opacity: 0.4;
+            font-size: 12px;
+        }
+
+        .history-item .badge {
+            background: rgba(127, 165, 185, 0.20);
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .history-empty {
+            text-align: center;
+            padding: 20px;
+            opacity: 0.4;
+            font-size: 14px;
+        }
+
+        /* ---------- 错误 & 加载 ---------- */
+        .error {
+            color: #b35a4a;
+            background: rgba(200, 110, 100, 0.10);
+            padding: 10px 16px;
+            border-radius: 10px;
+            border-left: 4px solid #b35a4a;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2.5px solid rgba(120, 160, 185, 0.20);
+            border-top-color: #7fa5b9;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .status-badge {
+            font-size: 13px;
+            font-weight: 500;
+            padding: 4px 12px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.20);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        /* ---------- 模态框 ---------- */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(60, 100, 130, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: rgba(255, 255, 255, 0.70);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.50);
+            padding: 32px 36px;
+            max-width: 600px;
+            width: 92%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 40px 80px rgba(60, 100, 130, 0.20);
+            animation: modalFadeIn 0.25s ease;
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.96) translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .modal-close {
+            float: right;
+            font-size: 28px;
+            font-weight: 300;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.2s, transform 0.2s;
+            background: none;
+            border: none;
+            color: #1e2f3a;
+        }
+
+        .modal-close:hover {
+            opacity: 0.9;
+            transform: rotate(90deg);
+        }
+
+        .modal-content img {
+            max-width: 100%;
+            max-height: 400px;
+            height: auto;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            margin: 12px 0;
+        }
+
+        .modal-content .meta {
+            font-size: 14px;
+            line-height: 1.7;
+            color: #1e2f3a;
+            word-break: break-word;
+            background: rgba(255, 255, 255, 0.12);
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-top: 8px;
+        }
+
+        /* ---------- 滚动条 ---------- */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(120, 160, 185, 0.08);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(120, 160, 185, 0.30);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(120, 160, 185, 0.50);
+        }
+
+        /* ---------- 工具类 ---------- */
+        .flex-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+        }
+        .gap-sm {
+            gap: 10px;
+        }
+        .mt-12 {
+            margin-top: 12px;
+        }
+        .mt-16 {
+            margin-top: 16px;
+        }
+        .mb-8 {
+            margin-bottom: 8px;
+        }
+        .text-muted {
+            opacity: 0.65;
+            font-weight: 400;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .w-full {
+            width: 100%;
+        }
+
+        /* ---------- 响应式 ---------- */
+        @media (max-width: 768px) {
+            body {
+                padding: 14px;
+            }
+            .glass-card {
+                padding: 18px 16px;
+                border-radius: 18px;
+            }
+            h1 {
+                font-size: 22px;
+                flex-wrap: wrap;
+            }
+            h1 small {
+                font-size: 14px;
+            }
+            .weight-slider {
+                flex: 1 0 100%;
+                gap: 8px;
+            }
+            .weight-slider label {
+                width: 64px;
+                font-size: 12px;
+            }
+            .result-card {
+                flex: 1 1 100%;
+            }
+            .result-card img {
+                max-height: 240px;
+            }
+            .candidate-item {
+                width: 130px;
+            }
+            .modal-content {
+                padding: 24px 20px;
+            }
+            .upload-area {
+                padding: 24px 16px;
+                min-height: 90px;
+            }
+            .btn-group {
+                flex-direction: column;
+            }
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+            .batch-result-item {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 6px;
+            }
+            .batch-result-item .actions {
+                justify-content: flex-start;
+            }
+            .history-item {
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .glass-card {
+                padding: 14px 12px;
+            }
+            h1 {
+                font-size: 19px;
+            }
+            .weight-slider input[type="range"] {
+                min-width: 50px;
+            }
+            .candidate-item {
+                width: 110px;
+                padding: 4px;
+            }
+            .candidate-item .score-label {
+                font-size: 11px;
+            }
+            .result-card img {
+                max-height: 180px;
+            }
+        }
+    </style>
 </head>
 <body>
+
     <div class="container">
-        <header>
-            <h1>AestheticCropper</h1>
-            <p>基于多特征融合的智能取景系统</p>
-        </header>
 
-        <main>
-            <!-- Image Input Area -->
-            <section class="input-section">
-                <h2>图像输入</h2>
-                <div class="upload-area">
-                    <input type="file" id="singleImage" accept="image/*" hidden>
-                    <button onclick="document.getElementById('singleImage').click()">选择单张图像</button>
-                    <input type="file" id="batchImages" accept="image/*" multiple hidden>
-                    <button onclick="document.getElementById('batchImages').click()">批量上传图像</button>
-                </div>
-            </section>
+        <!-- ======== 标题 ======== -->
+        <div class="glass-card glass-card-header">
+            <h1>
+                <span>📸 AestheticCropper</span>
+                <small>智能美学裁剪 · 多特征融合</small>
+                <span style="margin-left:auto;font-size:14px;font-weight:400;opacity:0.5;">v2.2</span>
+            </h1>
+            <p style="margin-top:4px;opacity:0.6;font-size:15px;font-weight:400;">
+                基于显著性 · 美学 · 构图 · 主体 · 技术的智能裁剪系统
+            </p>
+        </div>
 
-            <!-- Operation Buttons -->
-            <section class="action-section">
-                <button id="btnCrop" onclick="startCrop()" disabled>开始取景</button>
-                <button id="btnDownloadAll" onclick="downloadAllCrops()" disabled style="display:none">下载全部裁剪图</button>
-                <button id="btnExport" onclick="exportAllCoords()" disabled style="display:none">导出全部坐标</button>
-            </section>
+        <!-- ======== 权重调节面板 (紧凑) ======== -->
+        <div class="glass-card">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:4px;">
+                <h2 style="margin-bottom:0;"><span class="deco"></span> 融合权重</h2>
+                <span class="status-badge" id="weightStatus">实时调节</span>
+            </div>
+            <div class="weights-panel" id="weightsPanel">
+                <!-- JS 动态渲染 -->
+            </div>
+            <div class="btn-group" style="margin-top:8px;">
+                <button class="btn btn-primary" id="applyWeightsBtn">✦ 应用当前权重</button>
+                <button class="btn btn-secondary" id="resetWeightsBtn">↺ 重置默认</button>
+                <span id="weightStatusMsg" style="font-size:14px;opacity:0.5;align-self:center;margin-left:4px;"></span>
+            </div>
+        </div>
 
-            <!-- Results Area (unified for single + batch) -->
-            <section id="resultsSection" class="results-section" style="display:none">
-                <div class="results-header">
-                    <h2>取景结果</h2>
-                    <div id="batchNav" class="batch-nav" style="display:none">
-                        <button id="btnPrev" onclick="navigateResult(-1)" disabled>&lt; 上一张</button>
-                        <span id="navInfo">1 / 1</span>
-                        <button id="btnNext" onclick="navigateResult(1)" disabled>下一张 &gt;</button>
-                    </div>
-                </div>
-                <div id="resultsContainer" class="results-container"></div>
-            </section>
+        <!-- ======== 单图处理 ======== -->
+        <div class="glass-card">
+            <h2><span class="deco"></span> 单图处理</h2>
+            <div class="upload-area" id="singleUploadArea">
+                <div class="icon">🖼️</div>
+                <div class="hint">点击或拖拽上传单张图片</div>
+                <div class="sub-hint">支持 JPG / PNG / WebP</div>
+                <input type="file" id="singleFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" style="display:none">
+            </div>
+            <div id="singleResult" class="mt-16"></div>
+        </div>
 
-            <!-- Advanced Settings -->
-            <section class="settings-section">
-                <h2>高级设置</h2>
-                <details>
-                    <summary>展开参数调整</summary>
-                    <div class="settings-grid">
-                        <div class="setting-item">
-                            <label>美学权重</label>
-                            <input type="range" id="wAesthetic" min="0" max="0.5" step="0.05" value="0.20">
-                            <span id="wAestheticVal">0.20</span>
-                        </div>
-                        <div class="setting-item">
-                            <label>显著性权重</label>
-                            <input type="range" id="wSaliency" min="0" max="0.5" step="0.05" value="0.18">
-                            <span id="wSaliencyVal">0.18</span>
-                        </div>
-                        <div class="setting-item">
-                            <label>构图权重</label>
-                            <input type="range" id="wComposition" min="0" max="0.5" step="0.05" value="0.18">
-                            <span id="wCompositionVal">0.18</span>
-                        </div>
-                        <div class="setting-item">
-                            <label>主体权重</label>
-                            <input type="range" id="wSubject" min="0" max="0.5" step="0.05" value="0.16">
-                            <span id="wSubjectVal">0.16</span>
-                        </div>
-                        <div class="setting-item">
-                            <label>技术权重</label>
-                            <input type="range" id="wTechnical" min="0" max="0.5" step="0.05" value="0.05">
-                            <span id="wTechnicalVal">0.05</span>
-                        </div>
-                        <div class="setting-item">
-                            <label>面积先验权重</label>
-                            <input type="range" id="wAreaPrior" min="0" max="0.5" step="0.05" value="0.18">
-                            <span id="wAreaPriorVal">0.18</span>
-                        </div>
-                    </div>
-                </details>
-            </section>
-        </main>
+        <!-- ======== 批量处理 ======== -->
+        <div class="glass-card">
+            <h2><span class="deco"></span> 批量处理</h2>
+            <div class="upload-area" id="batchUploadArea">
+                <div class="icon">📂</div>
+                <div class="hint">点击选择多张图片</div>
+                <div class="sub-hint">可一次上传多张，批量裁剪</div>
+                <input type="file" id="batchFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" multiple style="display:none">
+            </div>
+            <div id="batchResult" class="mt-16"></div>
+            <div class="btn-group" style="margin-top:14px;">
+                <button class="btn btn-secondary" id="exportJsonBtn">📄 导出 JSON</button>
+                <button class="btn btn-secondary" id="exportCsvBtn">📊 导出 CSV</button>
+                <button class="btn btn-secondary" id="clearBatchBtn">🗑️ 清空结果</button>
+            </div>
+        </div>
+
+        <!-- ======== 处理历史 ======== -->
+        <div class="glass-card">
+            <h2><span class="deco"></span> 处理历史 <span style="font-size:14px;font-weight:400;opacity:0.4;margin-left:8px;">（最近20条）</span></h2>
+            <div id="historyContainer">
+                <div class="history-empty">暂无处理记录</div>
+            </div>
+            <div class="btn-group" style="margin-top:10px;">
+                <button class="btn btn-secondary" id="clearHistoryBtn">🗑️ 清空历史</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ======== 模态框 ======== -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h3 style="margin-bottom:4px;">📷 裁剪详情</h3>
+            <img id="modalCropImage" src="" alt="裁剪图">
+            <div class="meta" id="modalInfo">加载中...</div>
+        </div>
     </div>
 
     <script>
-        let allResults = [];    // all processed results
-        let currentIdx = 0;     // current displayed result index
-        let currentImageFile = null;
-        let batchFiles = null;
+        // ============================================================
+        //  全局状态
+        // ============================================================
+        let currentWeights = {};
+        let batchProcessedData = [];
+        let history = []; // { type: 'single'|'batch', filename, data, timestamp }
 
-        // --- Upload handlers ---
-        document.getElementById('singleImage').addEventListener('change', function(e) {
-            if (e.target.files.length > 0) {
-                currentImageFile = e.target.files[0];
-                batchFiles = null;
-                document.getElementById('btnCrop').disabled = false;
+        const DEFAULT_WEIGHTS = {
+            aesthetic: 0.25,
+            saliency: 0.25,
+            composition: 0.20,
+            subject: 0.18,
+            technical: 0.12,
+            area_prior: 0.00
+        };
+
+        const MAX_HISTORY = 20;
+
+        // ============================================================
+        //  工具函数
+        // ============================================================
+        function $(id) { return document.getElementById(id); }
+
+        function showError(containerId, message) {
+            const container = $(containerId);
+            if (!container) return;
+            const div = document.createElement('div');
+            div.className = 'error';
+            div.textContent = '❌ ' + message;
+            container.prepend(div);
+            setTimeout(() => div.remove(), 5000);
+        }
+
+        function clearContainer(containerId) {
+            const el = $(containerId);
+            if (el) el.innerHTML = '';
+        }
+
+        function formatNum(v) { return Number(v).toFixed(4); }
+
+        function formatTime(ts) {
+            const d = new Date(ts);
+            return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        // ============================================================
+        //  权重面板
+        // ============================================================
+        function renderWeightSliders(weights) {
+            const panel = $('weightsPanel');
+            panel.innerHTML = '';
+            const keys = ['aesthetic', 'saliency', 'composition', 'subject', 'technical', 'area_prior'];
+            const labels = {
+                aesthetic: '美学',
+                saliency: '显著性',
+                composition: '构图',
+                subject: '主体',
+                technical: '技术',
+                area_prior: '面积先验'
+            };
+            keys.forEach(key => {
+                const div = document.createElement('div');
+                div.className = 'weight-slider';
+                const val = weights[key] ?? 0;
+                div.innerHTML = `
+                    <label>${labels[key] || key}</label>
+                    <input type="range" id="slider_${key}" min="0" max="1" step="0.01" value="${val}">
+                    <span id="val_${key}">${Number(val).toFixed(2)}</span>
+                `;
+                const slider = div.querySelector('input');
+                slider.addEventListener('input', (e) => {
+                    const v = parseFloat(e.target.value);
+                    div.querySelector('span').textContent = v.toFixed(2);
+                    currentWeights[key] = v;
+                });
+                panel.appendChild(div);
+            });
+        }
+
+        async function loadConfig() {
+            try {
+                const resp = await fetch('/api/config');
+                if (!resp.ok) throw new Error('配置加载失败');
+                const config = await resp.json();
+                const w = config.fusion?.weights || DEFAULT_WEIGHTS;
+                currentWeights = { ...DEFAULT_WEIGHTS, ...w };
+                renderWeightSliders(currentWeights);
+            } catch (err) {
+                console.warn('配置加载失败，使用默认权重', err);
+                currentWeights = { ...DEFAULT_WEIGHTS };
+                renderWeightSliders(currentWeights);
             }
-        });
+        }
 
-        document.getElementById('batchImages').addEventListener('change', function(e) {
-            if (e.target.files.length > 0) {
-                batchFiles = e.target.files;
-                currentImageFile = null;
-                document.getElementById('btnCrop').disabled = false;
+        async function applyWeights() {
+            const btn = $('applyWeightsBtn');
+            const status = $('weightStatusMsg');
+            btn.disabled = true;
+            status.innerHTML = '<span class="loading"></span> 更新中...';
+            try {
+                const resp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ weights: currentWeights })
+                });
+                if (!resp.ok) throw new Error('权重更新失败');
+                status.textContent = '✅ 已生效';
+                setTimeout(() => { status.textContent = ''; }, 1800);
+            } catch (err) {
+                status.textContent = '❌ 更新失败: ' + err.message;
+            } finally {
+                btn.disabled = false;
             }
-        });
-
-        function startCrop() {
-            if (currentImageFile) {
-                cropSingle();
-            } else if (batchFiles) {
-                cropBatch();
-            }
         }
 
-        // --- Single image ---
-        function cropSingle() {
-            const formData = new FormData();
-            formData.append('image', currentImageFile);
-            setProcessing(true);
-
-            fetch('/api/crop', { method: 'POST', body: formData })
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) { alert('Error: ' + data.error); return; }
-                allResults = [{ filename: currentImageFile.name, ...data }];
-                currentIdx = 0;
-                showResults();
-            })
-            .catch(err => alert('Request failed: ' + err))
-            .finally(() => setProcessing(false));
+        function resetWeights() {
+            currentWeights = { ...DEFAULT_WEIGHTS };
+            renderWeightSliders(currentWeights);
+            $('weightStatusMsg').textContent = '↺ 已重置';
+            setTimeout(() => { $('weightStatusMsg').textContent = ''; }, 1200);
         }
 
-        // --- Batch ---
-        function cropBatch() {
-            const formData = new FormData();
-            for (let f of batchFiles) formData.append('images', f);
-            setProcessing(true);
-
-            fetch('/api/batch', { method: 'POST', body: formData })
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) { alert('Error: ' + data.error); return; }
-                allResults = data.results;
-                currentIdx = 0;
-                showResults();
-            })
-            .catch(err => alert('Request failed: ' + err))
-            .finally(() => setProcessing(false));
+        // ============================================================
+        //  子分数条形图
+        // ============================================================
+        function renderSubScoreBars(subScores) {
+            if (!subScores) return '';
+            const keys = ['aesthetic', 'saliency', 'composition', 'subject', 'technical', 'area_prior'];
+            const labels = {
+                aesthetic: '美学',
+                saliency: '显著性',
+                composition: '构图',
+                subject: '主体',
+                technical: '技术',
+                area_prior: '面积'
+            };
+            let html = `<div class="subscore-bars">`;
+            keys.forEach(key => {
+                const val = subScores[key] ?? 0;
+                const pct = Math.min(100, val * 100);
+                html += `
+                    <div class="subscore-row">
+                        <span class="label">${labels[key]||key}</span>
+                        <div class="bar-track">
+                            <div class="bar-fill" style="width:${pct}%;"></div>
+                        </div>
+                        <span class="value">${(val*100).toFixed(0)}%</span>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+            return html;
         }
 
-        function setProcessing(on) {
-            const btn = document.getElementById('btnCrop');
-            btn.disabled = on;
-            btn.textContent = on ? '处理中...' : '开始取景';
+        // ============================================================
+        //  历史管理
+        // ============================================================
+        function addHistory(type, filename, data) {
+            history.unshift({ type, filename, data, timestamp: Date.now() });
+            if (history.length > MAX_HISTORY) history.pop();
+            renderHistory();
         }
 
-        // --- Display results ---
-        function showResults() {
-            const section = document.getElementById('resultsSection');
-            section.style.display = 'block';
-
-            const isBatch = allResults.length > 1;
-            document.getElementById('batchNav').style.display = isBatch ? 'flex' : 'none';
-            document.getElementById('btnDownloadAll').style.display = allResults.length > 1 ? 'inline-block' : 'none';
-            document.getElementById('btnExport').style.display = allResults.length > 0 ? 'inline-block' : 'none';
-            document.getElementById('btnDownloadAll').disabled = false;
-            document.getElementById('btnExport').disabled = false;
-
-            renderCurrentResult();
-            updateNav();
-        }
-
-        function renderCurrentResult() {
-            const r = allResults[currentIdx];
-            const container = document.getElementById('resultsContainer');
-
-            if (r.error) {
-                container.innerHTML = `<div class="result-card"><p class="error-msg"><strong>${r.filename}</strong>: Error - ${r.error}</p></div>`;
+        function renderHistory() {
+            const container = $('historyContainer');
+            if (!history.length) {
+                container.innerHTML = '<div class="history-empty">暂无处理记录</div>';
                 return;
             }
+            let html = '<div class="history-list">';
+            history.forEach((item, idx) => {
+                const score = item.data?.score ?? '--';
+                const name = item.filename || '未命名';
+                const typeLabel = item.type === 'single' ? '单图' : '批量';
+                html += `
+                    <div class="history-item" data-idx="${idx}">
+                        <div class="left">
+                            <span class="name">${name}</span>
+                            <span class="meta">${typeLabel} · ${formatTime(item.timestamp)}</span>
+                            <span class="badge">得分 ${typeof score === 'number' ? score.toFixed(4) : score}</span>
+                        </div>
+                        <button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" data-view="${idx}">查看</button>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
 
-            const subScores = r.sub_scores || {};
-            container.innerHTML = `
-                <div class="result-card">
-                    <div class="result-filename">${r.filename || '结果'}</div>
-                    <div class="result-images">
-                        <div class="result-img-panel">
-                            <p class="result-img-label">原图 + 取景框</p>
-                            <img src="${r.original_image}" alt="Original with bbox">
+            container.querySelectorAll('[data-view]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const idx = parseInt(btn.getAttribute('data-view'));
+                    const item = history[idx];
+                    if (!item) return;
+                    const modal = $('detailModal');
+                    const img = $('modalCropImage');
+                    const info = $('modalInfo');
+                    const d = item.data;
+                    if (d && d.crop_image) img.src = d.crop_image;
+                    else img.src = '';
+                    info.innerHTML = `
+                        <strong>${item.filename}</strong><br>
+                        类型: ${item.type === 'single' ? '单图' : '批量'}<br>
+                        裁剪框: [${(d?.bbox||[]).join(', ')}]<br>
+                        得分: ${typeof d?.score === 'number' ? d.score.toFixed(4) : '--'}<br>
+                        说明: ${d?.explanation || '无'}<br>
+                        <span style="font-size:12px;opacity:0.4;">${formatTime(item.timestamp)}</span>
+                    `;
+                    modal.classList.add('active');
+                });
+            });
+        }
+
+        function clearHistory() {
+            history = [];
+            renderHistory();
+        }
+
+        // ============================================================
+        //  单图处理
+        // ============================================================
+        async function processSingleImage(file) {
+            const resultDiv = $('singleResult');
+            clearContainer('singleResult');
+            resultDiv.innerHTML = '<div style="padding:20px;text-align:center;"><span class="loading"></span> 处理中...</div>';
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const resp = await fetch('/api/crop', { method: 'POST', body: formData });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || '处理失败');
+                }
+                const data = await resp.json();
+
+                addHistory('single', file.name, data);
+
+                let html = `
+                    <div class="result-grid">
+                        <div class="result-card">
+                            <img src="${data.original_image}" alt="原图+框" loading="lazy">
+                            <div class="info">🎯 最佳裁剪框 · 得分: ${formatNum(data.score)}</div>
                         </div>
-                        <div class="result-img-panel">
-                            <p class="result-img-label">裁剪结果</p>
-                            <img src="${r.crop_image}" alt="Cropped">
-                            <button class="btn-download-crop" onclick="downloadCrop(${currentIdx})">下载裁剪图</button>
+                        <div class="result-card">
+                            <img src="${data.crop_image}" alt="最佳裁剪" loading="lazy">
+                            <div class="info">✂️ 最佳裁剪结果</div>
                         </div>
                     </div>
-                    <div class="result-scores">
-                        <div class="score-item-main">
-                            <span class="score-label">综合得分</span>
-                            <span class="score-value">${r.score.toFixed(4)}</span>
+                    ${renderSubScoreBars(data.sub_scores)}
+                    <h3 style="margin-top:16px;">🏆 Top-3 候选裁剪</h3>
+                    <div class="candidate-list" id="candidateList"></div>
+                `;
+                resultDiv.innerHTML = html;
+
+                const container = $('candidateList');
+                if (data.top_candidates && data.top_candidates.length) {
+                    data.top_candidates.forEach((cand, idx) => {
+                        const div = document.createElement('div');
+                        div.className = 'candidate-item';
+                        div.innerHTML = `
+                            <img src="${cand.crop_base64 || ''}" alt="候选${idx+1}" loading="lazy">
+                            <div class="score-label">得分: ${formatNum(cand.score)}</div>
+                            <button class="btn btn-secondary" style="margin-top:4px;padding:4px 10px;font-size:12px;" data-base64="${cand.crop_base64 || ''}" data-idx="${idx}">⬇ 下载</button>
+                        `;
+                        container.appendChild(div);
+                    });
+                    container.querySelectorAll('[data-base64]').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const b64 = btn.getAttribute('data-base64');
+                            if (b64) downloadBase64Image(b64, `candidate_${btn.getAttribute('data-idx')}.jpg`);
+                        });
+                    });
+                } else {
+                    container.innerHTML = '<p style="opacity:0.5;">无候选数据</p>';
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="error">错误: ${err.message}</div>`;
+                console.error(err);
+            }
+        }
+
+        // ============================================================
+        //  批量处理
+        // ============================================================
+        async function processBatch(files) {
+            const container = $('batchResult');
+            clearContainer('batchResult');
+            container.innerHTML = '<div style="padding:20px;text-align:center;"><span class="loading"></span> 批量处理中...</div>';
+
+            const formData = new FormData();
+            for (const f of files) formData.append('images', f);
+
+            try {
+                const resp = await fetch('/api/batch', { method: 'POST', body: formData });
+                if (!resp.ok) throw new Error('批量处理失败');
+                const data = await resp.json();
+                batchProcessedData = data.results || [];
+                renderBatchResults(batchProcessedData);
+                if (batchProcessedData.length) {
+                    const first = batchProcessedData[0];
+                    addHistory('batch', `批量 (${batchProcessedData.length}张)`, first);
+                }
+            } catch (err) {
+                container.innerHTML = `<div class="error">批量处理错误: ${err.message}</div>`;
+            }
+        }
+
+        function renderBatchResults(results) {
+            const container = $('batchResult');
+            if (!results || !results.length) {
+                container.innerHTML = '<p style="opacity:0.4;text-align:center;padding:20px;">暂无结果</p>';
+                return;
+            }
+            let html = `<div style="margin-bottom:10px;font-weight:500;">共 ${results.length} 张</div><div>`;
+            results.forEach((item, idx) => {
+                if (item.error) {
+                    html += `
+                        <div class="batch-result-item">
+                            <div class="file-info"><strong>${item.filename || '未命名'}</strong> <span class="error" style="font-size:13px;padding:2px 10px;">错误: ${item.error}</span></div>
                         </div>
-                        <div class="score-item-sub">
-                            <span>美学 ${subScores.aesthetic !== undefined ? subScores.aesthetic.toFixed(3) : '--'}</span>
-                            <span>显著性 ${subScores.saliency !== undefined ? subScores.saliency.toFixed(3) : '--'}</span>
-                            <span>构图 ${subScores.composition !== undefined ? subScores.composition.toFixed(3) : '--'}</span>
-                            <span>主体 ${subScores.subject !== undefined ? subScores.subject.toFixed(3) : '--'}</span>
-                            <span>技术 ${subScores.technical !== undefined ? subScores.technical.toFixed(3) : '--'}</span>
-                            <span>面积 ${subScores.area_prior !== undefined ? subScores.area_prior.toFixed(3) : '--'}</span>
-                        </div>
-                    </div>
-                    <div class="result-details">
-                        <details>
-                            <summary>详细评分</summary>
-                            <div class="detail-grid">
-                                ${Object.entries({
-                                    thirds: '三分法', center_balance: '中心平衡', whitespace: '留白',
-                                    edge_simplicity: '边缘简洁', symmetry: '对称性',
-                                    sharpness: '清晰度', brightness: '亮度', contrast: '对比度', saturation: '饱和度'
-                                }).map(([k, label]) => {
-                                    const val = r.sub_scores && r.sub_scores[k];
-                                    return val !== undefined ? `<div class="detail-item"><span>${label}</span><span>${val.toFixed(4)}</span></div>` : '';
-                                }).join('')}
+                    `;
+                } else {
+                    html += `
+                        <div class="batch-result-item">
+                            <div class="file-info">
+                                <strong>${item.filename || '未命名'}</strong>
+                                <span style="opacity:0.5;font-size:13px;">框: [${(item.bbox||[]).join(', ')}]</span>
+                                <span style="font-weight:500;color:#4a6a7a;">得分: ${formatNum(item.score)}</span>
                             </div>
-                        </details>
-                    </div>
-                    <div class="result-explanation">${r.explanation}</div>
-                    <div class="result-bbox">bbox: [${r.bbox.join(', ')}]</div>
-                </div>
-            `;
-        }
+                            <div class="actions">
+                                <button class="btn btn-secondary view-detail-btn" data-idx="${idx}" style="padding:4px 12px;font-size:12px;">👁 详情</button>
+                                <button class="btn btn-secondary download-crop-btn" data-idx="${idx}" style="padding:4px 12px;font-size:12px;">⬇ 裁剪</button>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            html += `</div>`;
+            html += `<div class="btn-group" style="margin-top:10px;">
+                        <button class="btn btn-secondary" id="batchDownloadCropsBtn">📦 批量下载所有裁剪图 (ZIP)</button>
+                     </div>`;
+            container.innerHTML = html;
 
-        // --- Navigation ---
-        function navigateResult(delta) {
-            currentIdx = Math.max(0, Math.min(allResults.length - 1, currentIdx + delta));
-            renderCurrentResult();
-            updateNav();
-        }
+            container.querySelectorAll('.view-detail-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = parseInt(btn.getAttribute('data-idx'));
+                    const item = results[idx];
+                    if (!item) return;
+                    const modal = $('detailModal');
+                    const img = $('modalCropImage');
+                    const info = $('modalInfo');
+                    if (item.crop_image) img.src = item.crop_image;
+                    else img.src = '';
+                    info.innerHTML = `
+                        <strong>${item.filename || '未命名'}</strong><br>
+                        裁剪框: [${(item.bbox||[]).join(', ')}]<br>
+                        得分: ${formatNum(item.score)}<br>
+                        说明: ${item.explanation || '无'}
+                    `;
+                    modal.classList.add('active');
+                });
+            });
 
-        function updateNav() {
-            if (allResults.length <= 1) return;
-            document.getElementById('navInfo').textContent = `${currentIdx + 1} / ${allResults.length}`;
-            document.getElementById('btnPrev').disabled = currentIdx === 0;
-            document.getElementById('btnNext').disabled = currentIdx === allResults.length - 1;
-        }
+            container.querySelectorAll('.download-crop-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = parseInt(btn.getAttribute('data-idx'));
+                    const item = results[idx];
+                    if (!item || !item.crop_image) {
+                        alert('该图片无裁剪图数据');
+                        return;
+                    }
+                    downloadBase64Image(item.crop_image, `crop_${item.filename || idx}.jpg`);
+                });
+            });
 
-        // --- Download ---
-        function downloadCrop(idx) {
-            const r = allResults[idx];
-            if (!r || !r.crop_image) return;
-            const link = document.createElement('a');
-            link.href = r.crop_image;
-            link.download = (r.filename || 'crop').replace(/\.[^.]+$/, '') + '_crop.jpg';
-            link.click();
-        }
-
-        function downloadAllCrops() {
-            for (let i = 0; i < allResults.length; i++) {
-                setTimeout(() => downloadCrop(i), i * 300);
+            const zipBtn = $('batchDownloadCropsBtn');
+            if (zipBtn) {
+                zipBtn.addEventListener('click', () => batchDownloadCrops(results));
             }
         }
 
-        function exportAllCoords() {
-            const coords = allResults.map(r => ({
-                filename: r.filename,
-                bbox: r.bbox,
-                score: r.score,
-                explanation: r.explanation,
-                sub_scores: r.sub_scores,
+        // ============================================================
+        //  批量下载 ZIP
+        // ============================================================
+        async function batchDownloadCrops(results) {
+            const valid = results.filter(r => !r.error && r.crop_image);
+            if (!valid.length) {
+                alert('没有可下载的裁剪图');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/batch_download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ results: valid })
+                });
+                if (!resp.ok) throw new Error('批量下载失败');
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'crops.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('批量下载失败: ' + err.message);
+            }
+        }
+
+        // ============================================================
+        //  导出
+        // ============================================================
+        async function exportResults(format) {
+            if (!batchProcessedData.length) {
+                alert('没有批量处理结果可导出');
+                return;
+            }
+            const exportData = batchProcessedData.map(item => ({
+                filename: item.filename || 'unknown',
+                bbox: item.bbox || [],
+                score: item.score || 0,
+                error: item.error || null
             }));
-            const blob = new Blob([JSON.stringify(coords, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'crop_coords.json';
-            link.click();
-            URL.revokeObjectURL(url);
+            try {
+                const resp = await fetch('/api/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ results: exportData, format })
+                });
+                if (!resp.ok) throw new Error('导出失败');
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `predictions.${format === 'csv' ? 'csv' : 'json'}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('导出失败: ' + err.message);
+            }
         }
 
-        // --- Weight sliders ---
-        ['wAesthetic', 'wSaliency', 'wComposition', 'wSubject', 'wTechnical', 'wAreaPrior'].forEach(id => {
-            const el = document.getElementById(id);
-            const valEl = document.getElementById(id + 'Val');
-            if (el && valEl) {
-                el.addEventListener('input', function() { valEl.textContent = this.value; });
-            }
-        });
+        // ============================================================
+        //  图片下载工具
+        // ============================================================
+        function downloadBase64Image(base64Data, filename) {
+            const link = document.createElement('a');
+            link.href = base64Data;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ============================================================
+        //  清空
+        // ============================================================
+        function clearBatchResults() {
+            batchProcessedData = [];
+            $('batchResult').innerHTML = '<p style="opacity:0.3;text-align:center;padding:20px;">已清空</p>';
+        }
+
+        // ============================================================
+        //  模态框控制
+        // ============================================================
+        function initModal() {
+            const modal = $('detailModal');
+            const closeBtn = modal.querySelector('.modal-close');
+            closeBtn.addEventListener('click', () => modal.classList.remove('active'));
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.classList.remove('active');
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') modal.classList.remove('active');
+            });
+        }
+
+        // ============================================================
+        //  初始化
+        // ============================================================
+        function init() {
+            loadConfig();
+            initModal();
+            renderHistory();
+
+            const singleArea = $('singleUploadArea');
+            const singleInput = $('singleFileInput');
+            singleArea.addEventListener('click', () => singleInput.click());
+            singleArea.addEventListener('dragover', (e) => e.preventDefault());
+            singleArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files[0];
+                if (file && file.type.startsWith('image/')) processSingleImage(file);
+            });
+            singleInput.addEventListener('change', (e) => {
+                if (e.target.files[0]) processSingleImage(e.target.files[0]);
+                e.target.value = '';
+            });
+
+            const batchArea = $('batchUploadArea');
+            const batchInput = $('batchFileInput');
+            batchArea.addEventListener('click', () => batchInput.click());
+            batchArea.addEventListener('dragover', (e) => e.preventDefault());
+            batchArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                if (files.length) processBatch(files);
+            });
+            batchInput.addEventListener('change', (e) => {
+                if (e.target.files.length) processBatch(Array.from(e.target.files));
+                e.target.value = '';
+            });
+
+            $('applyWeightsBtn').addEventListener('click', applyWeights);
+            $('resetWeightsBtn').addEventListener('click', resetWeights);
+            $('exportJsonBtn').addEventListener('click', () => exportResults('json'));
+            $('exportCsvBtn').addEventListener('click', () => exportResults('csv'));
+            $('clearBatchBtn').addEventListener('click', clearBatchResults);
+            $('clearHistoryBtn').addEventListener('click', clearHistory);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     </script>
+
 </body>
 </html>

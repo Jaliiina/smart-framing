@@ -9,12 +9,11 @@ from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
-
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.pipeline import AestheticCropper
 from src.utils import bbox_iou, load_config
-
+from src.utils import load_image
 
 ABLATION_CONFIGS = {
     "full": {},  # Use all modules with default weights
@@ -88,6 +87,8 @@ def run_ablation(
 def run_k_ablation(cropper: AestheticCropper, test_items: List[Dict], k_values: List[int]) -> List[Dict]:
     """Run ablation with different candidate counts K."""
     results = []
+    sample_image_path = test_items[0]["image_path"]
+    sample_image = load_image(sample_image_path)  # 需要导入 load_image
     for k in k_values:
         # Temporarily override top_k
         original_k = cropper.candidate_gen.top_k

@@ -9,7 +9,10 @@ import sys
 import tempfile
 import time
 import json
+import csv
 from pathlib import Path
+from flask import Response
+import zipfile
 
 # Fix ultralytics settings permission issue: set YOLO_SETTINGS_DIR before any imports
 _yolo_settings_dir = str(Path.home() / ".config" / "ultralytics")
@@ -63,6 +66,26 @@ def get_cropper() -> AestheticCropper:
             config_path = str(project_root / "config.yaml")
         cropper = AestheticCropper(config_path=config_path)
     return cropper
+
+current_weights = None
+
+@app.route('/api/config', methods=['POST'])
+def update_config():
+    global cropper, current_weights
+    data = request.get_json()
+    if 'weights' in data:
+        current_weights = data['weights']
+        if cropper:
+            # 更新 fusion 模块的权重
+            for k, v in current_weights.items():
+                setattr(cropper.fusion, f'weight_{k}', v)
+            # 重新归一化
+            total = sum(current_weights.values())
+            if total > 0:
+                for k in current_weights:
+                    setattr(cropper.fusion, f'weight_{k}', current_weights[k] / total)
+        return jsonify({'status': 'ok'})
+    return jsonify({'error': 'Invalid config'}), 400
 
 
 def image_to_base64(image: np.ndarray, fmt: str = ".jpg") -> str:
@@ -132,6 +155,7 @@ def crop_image():
                 {
                     "bbox": [int(x) for x in c.bbox],
                     "score": float(round(float(c.final_score), 4)),
+                    "crop_base64": image_to_base64(image[c.bbox[1]:c.bbox[3], c.bbox[0]:c.bbox[2]])
                 }
                 for c in result.top_candidates
             ],
@@ -203,18 +227,6 @@ def batch_process():
     return jsonify({"results": results})
 
 
-@app.route("/api/export", methods=["POST"])
-def export_coordinates():
-    """Export cropping coordinates as JSON/CSV."""
-    data = request.get_json()
-    if not data or "results" not in data:
-        return jsonify({"error": "No results data provided"}), 400
-
-    results = data["results"]
-    # Return as downloadable JSON
-    return jsonify({"coordinates": results})
-
-
 @app.route("/api/config", methods=["GET"])
 def get_config():
     """Return current configuration."""
@@ -227,18 +239,60 @@ def get_config():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/config", methods=["POST"])
-def update_config():
-    """Update configuration (weights, etc.)."""
+@app.route("/api/export", methods=["POST"])
+def export_coordinates():
     data = request.get_json()
-    if not data:
-        return jsonify({"error": "No config data provided"}), 400
+    results = data.get("results", [])
+    fmt = data.get("format", "json")  # 'json' or 'csv'
+    if fmt == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output, fieldnames=["image", "x1", "y1", "x2", "y2", "score"]
+        )
+        writer.writeheader()
+        for r in results:
+            # 注意：根据实际数据字段名，可能是 'filename' 或 'image'
+            writer.writerow(
+                {
+                    "image": r.get("filename", r.get("image", "")),
+                    "x1": r["bbox"][0],
+                    "y1": r["bbox"][1],
+                    "x2": r["bbox"][2],
+                    "y2": r["bbox"][3],
+                    "score": r.get("score", 0),
+                }
+            )
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment;filename=predictions.csv"},
+        )
+    else:
+        # 返回 JSON 格式
+        return jsonify(results)
 
-    global cropper
-    # Reset cropper to pick up changes
-    cropper = None
 
-    return jsonify({"status": "ok"})
+@app.route("/api/batch_download", methods=["POST"])
+def batch_download():
+    data = request.get_json()
+    results = data.get("results", [])
+    if not results:
+        return jsonify({"error": "No results provided"}), 400
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for item in results:
+            crop_base64 = item.get("crop_image")
+            filename = item.get("filename", "crop")
+            if crop_base64 and crop_base64.startswith("data:image"):
+                # 提取 base64 数据
+                img_data = base64.b64decode(crop_base64.split(",")[1])
+                zip_file.writestr(f"{filename}_crop.jpg", img_data)
+    zip_buffer.seek(0)
+    return Response(
+        zip_buffer.read(),
+        mimetype="application/zip",
+        headers={"Content-Disposition": "attachment;filename=crops.zip"},
+    )
 
 
 def main():
