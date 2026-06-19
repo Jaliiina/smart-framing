@@ -1,67 +1,51 @@
-"""Diagnose AestheticCropper on the paired testA framing dataset."""
+"""Build candidate diagnostics against pseudo ground-truth boxes."""
 
 from __future__ import annotations
 
 import argparse
-import csv
 import json
-import re
 import sys
 import time
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.pipeline import AestheticCropper
-from src.utils import bbox_iou, draw_bbox, load_image, save_image
+from src.utils import bbox_iou, load_image
 
 
-ROW_RE = re.compile(
-    r"\|\s*(A\d+\.jpg)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*"
-    r"\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|"
-)
-
-
-def load_ground_truth(dataset_dir: Path) -> dict[str, tuple[int, int, int, int]]:
-    text = (dataset_dir / "README.md").read_text(encoding="utf-8")
-    gt = {}
-    for name, cx, cy, bw, bh in ROW_RE.findall(text):
-        image = load_image(str(dataset_dir / name))
-        h, w = image.shape[:2]
-        cx_px, cy_px = float(cx) * w, float(cy) * h
-        box_w, box_h = float(bw) * w, float(bh) * h
-        gt[name] = tuple(
-            int(value)
-            for value in (
-                max(0, int(round(cx_px - box_w / 2))),
-                max(0, int(round(cy_px - box_h / 2))),
-                min(w, int(round(cx_px + box_w / 2))),
-                min(h, int(round(cy_px + box_h / 2))),
-            )
-        )
-    return gt
+def load_pseudo_boxes(path: Path) -> dict[str, tuple[int, int, int, int]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    boxes = {}
+    for row in data:
+        if "image" in row and "bbox" in row:
+            boxes[row["image"]] = tuple(int(v) for v in row["bbox"])
+    return boxes
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset-dir", default="testA/testA")
+    parser.add_argument("--image-dir", required=True)
+    parser.add_argument("--pseudo-json", required=True)
     parser.add_argument("--config", default="config.yaml")
-    parser.add_argument("--output-dir", default="outputs/testa_diagnose")
+    parser.add_argument("--output-dir", default="outputs/pseudo_diagnose")
     args = parser.parse_args()
 
-    dataset_dir = Path(args.dataset_dir)
+    image_dir = Path(args.image_dir)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    ground_truth = load_ground_truth(dataset_dir)
+    pseudo_boxes = load_pseudo_boxes(Path(args.pseudo_json))
     cropper = AestheticCropper(config_path=args.config)
+    # Diagnostics should measure the base candidate set, not recursively use
+    # the learned reranker being trained.
+    cropper.reranker = None
     records = []
 
-    for index, (name, gt_bbox) in enumerate(sorted(ground_truth.items()), start=1):
-        image_path = dataset_dir / name
+    for index, (name, target_bbox) in enumerate(sorted(pseudo_boxes.items()), start=1):
+        image_path = image_dir / name
         image = load_image(str(image_path))
         start = time.time()
 
@@ -75,8 +59,6 @@ def main() -> None:
 
         objects = cropper.subject_det.detect(image, saliency_map=saliency_map)
         candidates = cropper.candidate_gen.generate(image, saliency_map)
-        oracle_iou = max((bbox_iou(box, gt_bbox) for box in candidates), default=0.0)
-
         aesthetic_scores = cropper.aesthetic_scorer.score_candidates(image, candidates)
         saliency_scores = cropper.saliency_det.score_candidates(
             saliency_map, candidates, image.shape
@@ -114,14 +96,12 @@ def main() -> None:
                 dual_saliency_scores=dual_saliency_scores,
             )
             best, ranked = fused[0], fused[2] or fused[1]
-            if getattr(cropper, "reranker", None) is not None:
-                ranked = cropper.reranker.rerank(ranked, image.shape[:2])
-                best = ranked[0]
         finally:
             cropper.fusion.top_k_display = original_top_k
 
         elapsed = time.time() - start
-        pred_iou = bbox_iou(best.bbox, gt_bbox)
+        pred_iou = bbox_iou(best.bbox, target_bbox)
+        oracle_iou = max((bbox_iou(box, target_bbox) for box in candidates), default=0.0)
         pred_area = (
             (best.bbox[2] - best.bbox[0])
             * (best.bbox[3] - best.bbox[1])
@@ -131,22 +111,19 @@ def main() -> None:
         record = {
             "image": name,
             "pred_bbox": [int(x) for x in best.bbox],
-            "gt_bbox": list(gt_bbox),
-            "iou": pred_iou,
-            "oracle_iou": oracle_iou,
+            "gt_bbox": list(target_bbox),
+            "iou": float(pred_iou),
+            "oracle_iou": float(oracle_iou),
             "candidate_count": len(candidates),
             "pred_area_ratio": float(pred_area),
             "saliency_uniform": bool(is_uniform),
             "object_count": len(objects),
             "elapsed": float(elapsed),
-            **{
-                key: float(value)
-                for key, value in best.sub_scores.__dict__.items()
-            },
+            **{key: float(value) for key, value in best.sub_scores.__dict__.items()},
             "candidates": [
                 {
                     "bbox": [int(x) for x in candidate.bbox],
-                    "iou": float(bbox_iou(candidate.bbox, gt_bbox)),
+                    "iou": float(bbox_iou(candidate.bbox, target_bbox)),
                     "final_score": float(candidate.final_score),
                     **{
                         key: float(value)
@@ -157,20 +134,14 @@ def main() -> None:
             ],
         }
         records.append(record)
-
-        pred_vis = draw_bbox(image, gt_bbox, "GT", (0, 255, 0), 3)
-        pred_vis = draw_bbox(
-            pred_vis, best.bbox, f"Pred IoU={pred_iou:.3f}", (0, 0, 255), 3
-        )
-        save_image(pred_vis, str(output_dir / f"{Path(name).stem}_compare.jpg"))
         print(
-            f"[{index:02d}/{len(ground_truth)}] {name} "
+            f"[{index:02d}/{len(pseudo_boxes)}] {name} "
             f"IoU={pred_iou:.3f} oracle={oracle_iou:.3f} "
             f"area={pred_area:.3f} candidates={len(candidates)}"
         )
 
-    ious = np.array([r["iou"] for r in records])
-    oracle_ious = np.array([r["oracle_iou"] for r in records])
+    ious = np.array([r["iou"] for r in records], dtype=np.float64)
+    oracle_ious = np.array([r["oracle_iou"] for r in records], dtype=np.float64)
     summary = {
         "count": len(records),
         "mean_iou": float(ious.mean()),
@@ -181,17 +152,10 @@ def main() -> None:
         "oracle_recall_iou_0.7": float((oracle_ious >= 0.7).mean()),
         "mean_elapsed": float(np.mean([r["elapsed"] for r in records])),
     }
-
     (output_dir / "results.json").write_text(
         json.dumps({"summary": summary, "results": records}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    with (output_dir / "results.csv").open("w", newline="", encoding="utf-8-sig") as f:
-        if records:
-            writer = csv.DictWriter(f, fieldnames=records[0].keys())
-            writer.writeheader()
-            writer.writerows(records)
-
     print(json.dumps(summary, indent=2))
 
 

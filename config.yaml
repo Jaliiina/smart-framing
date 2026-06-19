@@ -1,18 +1,19 @@
 # AestheticCropper Configuration
-# All hyperparameters, model paths, and scoring weights
+# TestB-oriented default: prefer complete, visually pleasing crops over tiny
+# high-contrast local regions.
 
 candidate_generation:
-  grid_size: 8          # NxN grid points (6 or 8)
-  area_ratios: [0.20, 0.22, 0.25, 0.26, 0.28, 0.30, 0.35]  # added 0.26 for better GT coverage
-  aspect_ratios: [1.0, 1.333, 0.75, 1.778, 0.5625]  # 1:1, 4:3, 3:4, 16:9, 9:16
+  grid_size: 8
+  area_ratios: [0.25, 0.30, 0.35, 0.42, 0.50, 0.60]
+  aspect_ratios: [1.0, 1.333, 0.75, 1.778, 0.5625]
   use_original_ratio: true
-  preserve_original_aspect: true  # only generate candidates with original image aspect ratio
-  top_k: 200
-  min_area_ratio: 0.15   # filter candidates smaller than this * image area
-  max_area_ratio: 0.45   # filter candidates larger than this * image area
-  min_aspect_ratio: 0.5  # filter extreme aspect ratios
+  preserve_original_aspect: true
+  top_k: 240
+  min_area_ratio: 0.20
+  max_area_ratio: 0.70
+  min_aspect_ratio: 0.5
   max_aspect_ratio: 3.0
-  nms_iou_threshold: 0.60   # was 0.70 — balanced between keeping oracle candidates and avoiding noise
+  nms_iou_threshold: 0.68
   saliency_supplement: true
   saliency_peak_threshold: 0.7
   saliency_smooth_sigma: 5.0
@@ -25,52 +26,73 @@ models:
   u2net:
     weights_path: "models/u2net.pth"
     lite_weights_path: "models/u2netp.pth"
-    use_lite: true    # false = use full u2net.pth (176MB); true = use u2netp.pth (4.6MB)
-    device: "cuda"       # "cuda" or "cpu"
+    use_lite: true
+    device: "cuda"
   yolo:
     model_name: "yolov8n.pt"
     confidence_threshold: 0.2
     device: "cuda"
-    # COCO class IDs that require high completeness protection
-    important_classes: [0, 1, 2, 3, 5, 7, 9, 16, 17, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65]
-    # 0=person, 1=bicycle, 2=car, 3=motorcycle, 5=bus, 7=truck, 9=traffic light
-    # 16=cat, 17=dog, 56-65=various food/furniture/kitchen items
+    important_classes: [0, 1, 2, 3, 5, 7, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 39, 40, 41]
   aesthetic:
     model_path: "models/aesthetic_predictor.pth"
-    clip_model: "ViT-L/14"    # LAION predictor requires ViT-L/14 (768-dim embeddings)
+    clip_model: "ViT-L/14"
     device: "cuda"
-    use_fallback: true   # fall back to hand-crafted features if model unavailable
+    use_fallback: true
     use_clip_prompt_fallback: true
-    use_laion_predictor: true   # true = use aesthetic_predictor.pth; false = CLIP prompts only
+    use_laion_predictor: true
+    clip_prompt_blend_weight: 0.25
     positive_prompts:
       - "a well-composed professional photograph"
       - "a visually pleasing photograph with a clear subject"
       - "a balanced scenic photograph"
+      - "a complete aesthetic crop with the main subject intact"
     negative_prompts:
       - "a cluttered photograph with distracting objects"
       - "an accidental close-up of ground or debris"
       - "a poorly composed photograph"
+      - "a crop dominated by trash, ropes, random foreground clutter, or cut-off objects"
 
 fusion:
   weights:
     aesthetic: 0.30
-    saliency: 0.12       # back to working value
-    composition: 0.18
-    subject: 0.08
-    technical: 0.20
-    area_prior: 0.07
-  # Sigmoid compression for over-saturated dimensions (k=0 disables)
+    saliency: 0.04
+    composition: 0.24
+    subject: 0.22
+    technical: 0.08
+    area_prior: 0.12
   saliency_sigmoid_k: 5.0
   subject_sigmoid_k: 5.0
   area_prior:
-    ideal_range: [0.20, 0.35]   # widened to capture more GT-aligned candidates
-    large_penalty_start: 0.45
-    max_allowed_without_reason: 0.50
-  # Fallback strategies
+    ideal_range: [0.30, 0.55]
+    large_penalty_start: 0.65
+    max_allowed_without_reason: 0.75
   saliency_uniform_std_threshold: 0.05
   saliency_uniform_weight_reduction: 0.10
   low_score_threshold: 0.3
   top_k_display: 3
+  area_target_ratio: 0.38
+  area_target_penalty_weight: 0.18
+  edge_adjacency_penalty_enabled: true
+  edge_adjacency_penalty_threshold: 0.03
+  edge_adjacency_penalty_strength: 0.10
+  saliency_vertical_bias_enabled: true
+  saliency_vertical_bias_strength: 0.08
+  stage1_filter:
+    boundary_threshold: 0.30
+    boundary_penalty_strength: 0.10
+
+reranker:
+  enabled: true
+  model_path: "models/testa_ridge_reranker.json"
+  blend_with_fusion: 0.0
+  takeover_margin: 0.0
+  protect_high_quality_fusion: true
+  protect_fusion_score_threshold: 0.80
+  large_area_takeover_threshold: 0.50
+
+refiner:
+  enabled: true
+  max_score_drop: 0.08
 
 composition:
   weights:
@@ -84,13 +106,19 @@ composition:
 
 technical_quality:
   weights:
-    sharpness: 0.30
+    sharpness: 0.25
     brightness: 0.25
     contrast: 0.25
-    saturation: 0.20
+    saturation: 0.25
   brightness_ideal_range: [50, 200]
   saturation_ideal_range: [40, 180]
+  distraction_penalty_weight: 0.35
 
 subject:
   min_important_inclusion: 0.92
   tightness_weight: 0.25
+  min_object_size_px: 25
+  fallback_min_area_ratio: 0.04
+  fallback_allowed_classes: [0, 1, 2, 3, 5, 7, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 39, 40, 41]
+  distractor_classes: [24, 26, 27, 28, 31, 32, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
+  avoid_distractors: true

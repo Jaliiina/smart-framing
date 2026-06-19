@@ -12,8 +12,7 @@ import numpy as np
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.pipeline import AestheticCropper
-from src.utils import bbox_iou, load_config
-from src.utils import load_image
+from src.utils import bbox_iou
 
 ABLATION_CONFIGS = {
     "full": {},  # Use all modules with default weights
@@ -34,46 +33,39 @@ def run_ablation(
     weight_overrides: Dict[str, float],
 ) -> Dict:
     """Run one ablation configuration."""
-    # Set custom weights
-    if weight_overrides:
-        result = cropper.process_with_custom_weights(
-            test_items[0]["image_path"],  # dummy call to set weights
-            weight_overrides,
-        )
-        # Actually we need to set weights manually and re-run all items
-        for k, v in weight_overrides.items():
-            setattr(cropper.fusion, f"weight_{k}", v)
-        # Normalize remaining weights
-        total = sum(
-            getattr(cropper.fusion, f"weight_{k}")
-            for k in ["aesthetic", "saliency", "composition", "subject", "technical", "area_prior"]
-        )
-        if total > 0:
-            for k in ["aesthetic", "saliency", "composition", "subject", "technical", "area_prior"]:
-                val = getattr(cropper.fusion, f"weight_{k}")
-                setattr(cropper.fusion, f"weight_{k}", val / total)
+    weight_names = [
+        "aesthetic",
+        "saliency",
+        "composition",
+        "subject",
+        "technical",
+        "area_prior",
+    ]
+    original_weights = {
+        k: getattr(cropper.fusion, f"weight_{k}") for k in weight_names
+    }
+
+    for k, v in weight_overrides.items():
+        setattr(cropper.fusion, f"weight_{k}", v)
 
     ious = []
     scores = []
     times = []
-
-    for item in test_items:
-        start = time.time()
-        try:
-            result = cropper.process(item["image_path"])
-            iou = bbox_iou(result.best_bbox, item["gt_bbox"])
-            ious.append(iou)
-            scores.append(result.best_score)
-        except Exception:
-            ious.append(0.0)
-            scores.append(0.0)
-        times.append(time.time() - start)
-
-    # Restore default weights
-    config = load_config()
-    fcfg = config.get("fusion", {}).get("weights", {})
-    for k in ["aesthetic", "saliency", "composition", "subject", "technical", "area_prior"]:
-        setattr(cropper.fusion, f"weight_{k}", fcfg.get(k, 0.2))
+    try:
+        for item in test_items:
+            start = time.time()
+            try:
+                result = cropper.process(item["image_path"])
+                iou = bbox_iou(result.best_bbox, item["gt_bbox"])
+                ious.append(iou)
+                scores.append(result.best_score)
+            except Exception:
+                ious.append(0.0)
+                scores.append(0.0)
+            times.append(time.time() - start)
+    finally:
+        for k, v in original_weights.items():
+            setattr(cropper.fusion, f"weight_{k}", v)
 
     return {
         "name": name,
@@ -87,8 +79,6 @@ def run_ablation(
 def run_k_ablation(cropper: AestheticCropper, test_items: List[Dict], k_values: List[int]) -> List[Dict]:
     """Run ablation with different candidate counts K."""
     results = []
-    sample_image_path = test_items[0]["image_path"]
-    sample_image = load_image(sample_image_path)  # 需要导入 load_image
     for k in k_values:
         # Temporarily override top_k
         original_k = cropper.candidate_gen.top_k

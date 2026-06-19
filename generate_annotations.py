@@ -1,55 +1,124 @@
+"""Generate testA annotations from the README table."""
+
+from __future__ import annotations
+
+import argparse
 import json
 import re
 from pathlib import Path
-import cv2
 
-def parse_readme(readme_path):
-    """解析 README.md 表格，返回 {image_name: (cx_norm, cy_norm, w_norm, h_norm)}"""
-    text = Path(readme_path).read_text(encoding='utf-8')
-    # 匹配表格行：| A01.jpg | 0.356352 | 0.281752 | 0.5 | 0.5 |
-    pattern = re.compile(r'\|\s*(\S+\.jpg)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|')
-    data = {}
-    for match in pattern.findall(text):
-        name, cx, cy, w, h = match
+try:
+    import cv2
+except ImportError:  # pragma: no cover - used only outside the CV environment
+    cv2 = None
+
+
+ROW_RE = re.compile(
+    r"\|\s*(\S+\.jpg)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*"
+    r"\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|"
+)
+
+
+def parse_readme(readme_path: Path) -> dict[str, tuple[float, float, float, float]]:
+    """Parse normalized crop boxes from the testA README table."""
+    text = readme_path.read_text(encoding="utf-8")
+    data: dict[str, tuple[float, float, float, float]] = {}
+    for name, cx, cy, w, h in ROW_RE.findall(text):
         data[name] = (float(cx), float(cy), float(w), float(h))
     return data
 
-def generate_annotations(image_dir, readme_path, output_json):
-    """根据 README 和实际图片尺寸生成 annotations.json"""
+
+def normalized_center_to_bbox(
+    cx_norm: float,
+    cy_norm: float,
+    w_norm: float,
+    h_norm: float,
+    image_w: int,
+    image_h: int,
+) -> list[int]:
+    """Convert normalized center-format boxes to pixel xyxy boxes."""
+    box_w = round(w_norm * image_w)
+    box_h = round(h_norm * image_h)
+    center_x = round(cx_norm * image_w)
+    center_y = round(cy_norm * image_h)
+
+    x1 = max(0, int(round(center_x - box_w / 2)))
+    y1 = max(0, int(round(center_y - box_h / 2)))
+    x2 = min(image_w, int(round(center_x + box_w / 2)))
+    y2 = min(image_h, int(round(center_y + box_h / 2)))
+    return [x1, y1, x2, y2]
+
+
+def read_image_size(image_path: Path) -> tuple[int, int] | None:
+    """Return (width, height), using OpenCV when available and Pillow otherwise."""
+    if cv2 is not None:
+        image = cv2.imread(str(image_path))
+        if image is not None:
+            image_h, image_w = image.shape[:2]
+            return image_w, image_h
+
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as image:
+            return image.size
+    except Exception:
+        return None
+
+
+def generate_annotations(
+    image_dir: Path,
+    readme_path: Path,
+    output_json: Path,
+) -> list[dict]:
+    """Generate annotation records compatible with eval scripts."""
     readme_data = parse_readme(readme_path)
     annotations = []
-    for img_name, (cx_norm, cy_norm, w_norm, h_norm) in readme_data.items():
-        img_path = Path(image_dir) / img_name
-        if not img_path.exists():
-            print(f"警告：图片 {img_path} 不存在，跳过")
+
+    for image_name, (cx_norm, cy_norm, w_norm, h_norm) in sorted(readme_data.items()):
+        image_path = image_dir / image_name
+        if not image_path.exists():
+            print(f"Warning: image not found, skipping: {image_path}")
             continue
-        img = cv2.imread(str(img_path))
-        if img is None:
-            print(f"警告：无法读取 {img_path}，跳过")
+
+        image_size = read_image_size(image_path)
+        if image_size is None:
+            print(f"Warning: failed to read image, skipping: {image_path}")
             continue
-        h, w = img.shape[:2]
-        # 计算 bbox 的像素坐标
-        bbox_w = int(w_norm * w)
-        bbox_h = int(h_norm * h)
-        center_x = int(cx_norm * w)
-        center_y = int(cy_norm * h)
-        x1 = max(0, center_x - bbox_w // 2)
-        y1 = max(0, center_y - bbox_h // 2)
-        x2 = min(w, x1 + bbox_w)
-        y2 = min(h, y1 + bbox_h)
-        annotations.append({
-            "image": img_name,
-            "bbox": [x1, y1, x2, y2],
-            "score": 1.0  # 可默认给 1.0
-        })
-    # 保存 JSON
-    with open(output_json, 'w', encoding='utf-8') as f:
-        json.dump(annotations, f, indent=2, ensure_ascii=False)
-    print(f"已生成 {len(annotations)} 条标注，保存至 {output_json}")
+
+        image_w, image_h = image_size
+        annotations.append(
+            {
+                "image": image_name,
+                "bbox": normalized_center_to_bbox(
+                    cx_norm, cy_norm, w_norm, h_norm, image_w, image_h
+                ),
+                "score": 1.0,
+            }
+        )
+
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+    output_json.write_text(
+        json.dumps(annotations, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    print(f"Generated {len(annotations)} annotations: {output_json}")
+    return annotations
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate testA annotations JSON")
+    parser.add_argument("--image-dir", default="testA/testA")
+    parser.add_argument("--readme", default="testA/testA/README.md")
+    parser.add_argument("--output", default="testA/testA/annotations.json")
+    args = parser.parse_args()
+
+    generate_annotations(
+        image_dir=Path(args.image_dir),
+        readme_path=Path(args.readme),
+        output_json=Path(args.output),
+    )
+
 
 if __name__ == "__main__":
-    # 请根据实际路径修改
-    image_dir = "testA/testA"          # 存放 A01.jpg... 的目录
-    readme_path = "testA/testA/README.md"  # README.md 的路径
-    output_json = "testA/testA/annotations.json"
-    generate_annotations(image_dir, readme_path, output_json)
+    main()
