@@ -29,7 +29,7 @@ class SaliencyDetector:
         self.lite_weights_path: str = u2cfg.get("lite_weights_path", "models/u2netp.pth")
         self.use_lite: bool = u2cfg.get("use_lite", True)
         self.force_fallback: bool = u2cfg.get("force_fallback", False)
-        self.device: str = u2cfg.get("device", "cpu")
+        self.device: str = self._resolve_device(u2cfg.get("device", "cpu"))
         self.input_size: int = config.get("preprocessing", {}).get("u2net_input_size", 320)
 
         self.uniform_std_threshold: float = config.get("fusion", {}).get(
@@ -37,6 +37,21 @@ class SaliencyDetector:
         )
         self._model = None
         self._model_loaded = False
+
+    @staticmethod
+    def _resolve_device(requested_device: str) -> str:
+        """Return a CUDA device only when PyTorch has CUDA support available."""
+        device = str(requested_device).lower()
+        if device == "cuda":
+            try:
+                import torch
+
+                if not torch.cuda.is_available():
+                    logger.warning("CUDA was requested for U2-Net but is not available; using CPU.")
+                    return "cpu"
+            except Exception:
+                return "cpu"
+        return device
 
     def detect_dual(
         self, image: np.ndarray
@@ -70,6 +85,8 @@ class SaliencyDetector:
         try:
             import torch
             from .u2net_model import U2Net, U2NetP  # type: ignore
+
+            self.device = self._resolve_device(self.device)
 
             weights = self.lite_weights_path if self.use_lite else self.weights_path
             if not Path(weights).exists():
@@ -116,6 +133,8 @@ class SaliencyDetector:
     def _detect_u2net(self, image: np.ndarray) -> np.ndarray:
         """Run U2-Net inference."""
         import torch
+
+        self.device = self._resolve_device(self.device)
 
         h, w = image.shape[:2]
         # Preprocess: resize to input_size x input_size

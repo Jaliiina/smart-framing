@@ -30,6 +30,10 @@ class FusionModule:
         self.max_allowed_without_reason: float = area_cfg.get(
             "max_allowed_without_reason", 0.85
         )
+        self.area_target_penalty_weight: float = fcfg.get(
+            "area_target_penalty_weight", 0.0
+        )
+        self.area_target_ratio: float = fcfg.get("area_target_ratio", 0.25)
 
         self.saliency_uniform_std: float = fcfg.get("saliency_uniform_std_threshold", 0.05)
         self.saliency_uniform_reduction: float = fcfg.get("saliency_uniform_weight_reduction", 0.10)
@@ -142,8 +146,11 @@ class FusionModule:
                         local_h, local_w = region.shape[:2]
                         ys_local = np.mgrid[0:local_h, 0:local_w][0]
                         local_com_y_pct = float((ys_local * region).sum()) / reg_sum / max(1, local_h)
-                        # Bonus for crops whose internal saliency is in upper portion (sky)
-                        vertical_bias[i] = self._saliency_vertical_bias_strength * local_com_y_pct
+                        # Bonus for crops whose internal saliency is higher in the crop.
+                        # local_com_y_pct is 0 at the top and 1 at the bottom.
+                        vertical_bias[i] = self._saliency_vertical_bias_strength * (
+                            1.0 - local_com_y_pct
+                        )
 
         # --- Compute boundary penalty (soft penalty for edge contamination) ---
         boundary_penalty = np.zeros(n)
@@ -230,6 +237,15 @@ class FusionModule:
         # Apply vertical bias, edge-adjacency and boundary penalties
         final_scores = final_scores + vertical_bias - edge_penalty - boundary_penalty
 
+        if self.area_target_penalty_weight > 0 and image_shape is not None:
+            area_ratios = np.array(
+                [self._area_ratio(bbox, image_shape) for bbox in bboxes],
+                dtype=np.float64,
+            )
+            final_scores = final_scores - self.area_target_penalty_weight * np.abs(
+                area_ratios - self.area_target_ratio
+            )
+
         # --- Build results ---
         candidates = []
         for i in range(n):
@@ -279,6 +295,7 @@ class FusionModule:
             saliency_is_uniform=saliency_is_uniform,
             has_subject=has_subject,
             image_shape=image_shape,
+            subject_source=subject_source,
         )
 
         # Top-K for display
@@ -419,12 +436,22 @@ class FusionModule:
         saliency_is_uniform: bool,
         has_subject: bool,
         image_shape: Optional[Tuple[int, int]],
+        subject_source: str = "subject",
     ) -> CandidateResult:
         if saliency_is_uniform:
             return best
 
         best_area = self._area_ratio(best.bbox, image_shape)
         if best_area <= 0.80:
+            complete = self._prefer_complete_close_candidate(
+                best,
+                candidates,
+                has_subject=has_subject,
+                image_shape=image_shape,
+                subject_source=subject_source,
+            )
+            if complete is not None:
+                return complete
             return best
 
         for cand in candidates[:10]:
@@ -434,6 +461,39 @@ class FusionModule:
             if 0.25 <= area <= 0.65 and subject_ok and score_close:
                 return cand
         return best
+
+    def _prefer_complete_close_candidate(
+        self,
+        best: CandidateResult,
+        candidates: List[CandidateResult],
+        has_subject: bool,
+        image_shape: Optional[Tuple[int, int]],
+        subject_source: str = "subject",
+    ) -> Optional[CandidateResult]:
+        """Prefer a slightly wider, complete crop when scores are very close."""
+        if not has_subject or subject_source != "subject":
+            return None
+
+        best_area = self._area_ratio(best.bbox, image_shape)
+        if best_area >= 0.45:
+            return None
+
+        for cand in candidates[:12]:
+            if cand is best:
+                continue
+            area = self._area_ratio(cand.bbox, image_shape)
+            if area <= best_area * 1.18 or area > 0.62:
+                continue
+            if cand.final_score < best.final_score * 0.965:
+                continue
+            if has_subject and cand.sub_scores.subject + 0.05 < best.sub_scores.subject:
+                continue
+            if cand.sub_scores.aesthetic + 0.08 < best.sub_scores.aesthetic:
+                continue
+            if cand.sub_scores.composition + 0.12 < best.sub_scores.composition:
+                continue
+            return cand
+        return None
 
     def grid_search_weights(
         self,
