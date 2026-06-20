@@ -97,6 +97,12 @@ class AestheticCropper:
                     large_area_takeover_threshold=reranker_cfg.get(
                         "large_area_takeover_threshold", 0.50
                     ),
+                    blank_penalty_weight=reranker_cfg.get("blank_penalty_weight", 0.45),
+                    artifact_penalty_weight=reranker_cfg.get("artifact_penalty_weight", 0.45),
+                    saturated_penalty_weight=reranker_cfg.get("saturated_penalty_weight", 0.50),
+                    blank_penalty_threshold=reranker_cfg.get("blank_penalty_threshold", 0.45),
+                    artifact_penalty_threshold=reranker_cfg.get("artifact_penalty_threshold", 0.45),
+                    saturated_penalty_threshold=reranker_cfg.get("saturated_penalty_threshold", 0.35),
                 )
                 logger.info(f"Learned reranker loaded from {model_path}")
             except Exception as exc:

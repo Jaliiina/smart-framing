@@ -53,6 +53,7 @@ cropper: AestheticCropper = None
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.gaic.yaml"
 
 
 def get_cropper() -> AestheticCropper:
@@ -61,9 +62,7 @@ def get_cropper() -> AestheticCropper:
     if cropper is None:
         config_path = os.environ.get("AESTHETIC_CROPPER_CONFIG")
         if not config_path:
-            # Resolve relative to the smart-framing project root
-            project_root = Path(__file__).resolve().parent.parent
-            config_path = str(project_root / "config.yaml")
+            config_path = str(DEFAULT_CONFIG_PATH)
         cropper = AestheticCropper(config_path=config_path)
     return cropper
 
@@ -231,7 +230,8 @@ def batch_process():
 def get_config():
     """Return current configuration."""
     try:
-        config = load_config()
+        config_path = os.environ.get("AESTHETIC_CROPPER_CONFIG", str(DEFAULT_CONFIG_PATH))
+        config = load_config(config_path)
         return jsonify(config)
     except Exception as e:
         import traceback

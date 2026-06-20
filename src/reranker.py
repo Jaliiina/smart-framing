@@ -170,6 +170,12 @@ class LearnedReranker:
     protect_high_quality_fusion: bool = True
     protect_fusion_score_threshold: float = 0.80
     large_area_takeover_threshold: float = 0.50
+    blank_penalty_weight: float = 0.45
+    artifact_penalty_weight: float = 0.45
+    saturated_penalty_weight: float = 0.50
+    blank_penalty_threshold: float = 0.45
+    artifact_penalty_threshold: float = 0.45
+    saturated_penalty_threshold: float = 0.35
 
     @classmethod
     def from_file(
@@ -180,6 +186,12 @@ class LearnedReranker:
         protect_high_quality_fusion: bool | None = None,
         protect_fusion_score_threshold: float | None = None,
         large_area_takeover_threshold: float | None = None,
+        blank_penalty_weight: float | None = None,
+        artifact_penalty_weight: float | None = None,
+        saturated_penalty_weight: float | None = None,
+        blank_penalty_threshold: float | None = None,
+        artifact_penalty_threshold: float | None = None,
+        saturated_penalty_threshold: float | None = None,
     ):
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         blend = (
@@ -207,6 +219,36 @@ class LearnedReranker:
             if large_area_takeover_threshold is not None
             else float(data.get("large_area_takeover_threshold", 0.50))
         )
+        blank_weight = (
+            float(blank_penalty_weight)
+            if blank_penalty_weight is not None
+            else float(data.get("blank_penalty_weight", 0.45))
+        )
+        artifact_weight = (
+            float(artifact_penalty_weight)
+            if artifact_penalty_weight is not None
+            else float(data.get("artifact_penalty_weight", 0.45))
+        )
+        saturated_weight = (
+            float(saturated_penalty_weight)
+            if saturated_penalty_weight is not None
+            else float(data.get("saturated_penalty_weight", 0.50))
+        )
+        blank_threshold = (
+            float(blank_penalty_threshold)
+            if blank_penalty_threshold is not None
+            else float(data.get("blank_penalty_threshold", 0.45))
+        )
+        artifact_threshold = (
+            float(artifact_penalty_threshold)
+            if artifact_penalty_threshold is not None
+            else float(data.get("artifact_penalty_threshold", 0.45))
+        )
+        saturated_threshold = (
+            float(saturated_penalty_threshold)
+            if saturated_penalty_threshold is not None
+            else float(data.get("saturated_penalty_threshold", 0.35))
+        )
         if data.get("type") == "knn_candidate_reranker":
             raise ValueError("KNN reranker is deprecated; retrain with pairwise ridge.")
         if len(data.get("feature_names", [])) != len(FEATURE_NAMES):
@@ -221,6 +263,12 @@ class LearnedReranker:
             protect_high_quality_fusion=protect,
             protect_fusion_score_threshold=score_threshold,
             large_area_takeover_threshold=area_threshold,
+            blank_penalty_weight=blank_weight,
+            artifact_penalty_weight=artifact_weight,
+            saturated_penalty_weight=saturated_weight,
+            blank_penalty_threshold=blank_threshold,
+            artifact_penalty_threshold=artifact_threshold,
+            saturated_penalty_threshold=saturated_threshold,
         )
 
     def _area_ratio(self, candidate: CandidateResult, image_shape: Sequence[int]) -> float:
@@ -294,10 +342,18 @@ class LearnedReranker:
                 score = learned
 
             sub = candidate.sub_scores
-            blank_excess = max(0.0, float(sub.blank_area_penalty) - 0.45)
-            artifact_excess = max(0.0, float(sub.visual_artifact_penalty) - 0.45)
+            blank_excess = max(
+                0.0,
+                float(sub.blank_area_penalty) - self.blank_penalty_threshold,
+            )
+            artifact_excess = max(
+                0.0,
+                float(sub.visual_artifact_penalty) - self.artifact_penalty_threshold,
+            )
             saturated_foreground_excess = max(
-                0.0, float(sub.small_saturated_object_penalty) - 0.35
+                0.0,
+                float(sub.small_saturated_object_penalty)
+                - self.saturated_penalty_threshold,
             )
             low_roi_blank = (
                 0.75
@@ -313,9 +369,9 @@ class LearnedReranker:
                 else 0.0
             )
             score -= (
-                0.45 * blank_excess
-                + 0.45 * artifact_excess
-                + 0.50 * saturated_foreground_excess
+                self.blank_penalty_weight * blank_excess
+                + self.artifact_penalty_weight * artifact_excess
+                + self.saturated_penalty_weight * saturated_foreground_excess
                 + low_roi_blank
                 + low_info_blank
             )
@@ -412,7 +468,15 @@ class LearnedReranker:
                 and rel >= 0.88
             )
             saturated_tiebreak = (
-                rel >= 0.94
+                (
+                    rel >= 0.99
+                    or (
+                        rel >= 0.97
+                        and b.small_saturated_object_penalty >= 0.95
+                        and s.small_saturated_object_penalty
+                        <= b.small_saturated_object_penalty - 0.25
+                    )
+                )
                 and s.subject + 0.05 >= b.subject
                 and s.roi_discard + 0.03 >= b.roi_discard
                 and s.small_saturated_object_penalty
@@ -421,7 +485,10 @@ class LearnedReranker:
             )
             no_subject_cleaner = (
                 b.subject <= 0.05
-                and b.blank_area_penalty + b.visual_artifact_penalty > 0.18
+                and (
+                    b.blank_area_penalty >= 0.25
+                    or b.visual_artifact_penalty >= 0.35
+                )
                 and s.blank_area_penalty <= max(0.08, b.blank_area_penalty - 0.08)
                 and s.visual_artifact_penalty <= max(0.08, b.visual_artifact_penalty - 0.04)
                 and s.roi_discard >= b.roi_discard - 0.12

@@ -91,7 +91,12 @@ def train_ridge(x: np.ndarray, y: np.ndarray, weights: np.ndarray, alpha: float)
     w_sqrt = np.sqrt(weights[:, np.newaxis])
     xw = x_norm * w_sqrt
     yw = y * np.sqrt(weights)
-    coef = np.linalg.solve(xw.T @ xw + reg, xw.T @ yw)
+    system = xw.T @ xw + reg
+    rhs = xw.T @ yw
+    try:
+        coef = np.linalg.solve(system, rhs)
+    except np.linalg.LinAlgError:
+        coef = np.linalg.lstsq(system, rhs, rcond=None)[0]
     pred = x_norm @ coef
     return coef, mean, scale, pred
 
@@ -157,7 +162,12 @@ def train_pairwise_ridge(
     w_sqrt = np.sqrt(pair_w[:, np.newaxis])
     xw = pair_x * w_sqrt
     yw = pair_y * np.sqrt(pair_w)
-    coef = np.linalg.solve(xw.T @ xw + reg, xw.T @ yw)
+    system = xw.T @ xw + reg
+    rhs = xw.T @ yw
+    try:
+        coef = np.linalg.solve(system, rhs)
+    except np.linalg.LinAlgError:
+        coef = np.linalg.lstsq(system, rhs, rcond=None)[0]
     pred = x_norm @ coef
     return coef, mean, scale, pred
 
