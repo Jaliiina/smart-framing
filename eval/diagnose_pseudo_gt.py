@@ -58,7 +58,9 @@ def main() -> None:
             fallback_sal_map = saliency_map
 
         objects = cropper.subject_det.detect(image, saliency_map=saliency_map)
-        candidates = cropper.candidate_gen.generate(image, saliency_map)
+        candidates = cropper.candidate_gen.generate(
+            image, saliency_map, detected_objects=objects
+        )
         aesthetic_scores = cropper.aesthetic_scorer.score_candidates(image, candidates)
         saliency_scores = cropper.saliency_det.score_candidates(
             saliency_map, candidates, image.shape
@@ -77,10 +79,12 @@ def main() -> None:
             candidates, objects, image.shape
         )
         technical_scores = cropper.tech_scorer.score_candidates(image, candidates)
+        semantic_heatmaps = cropper.semantic_heatmap_scorer.build_heatmaps(image)
         subjectness_maps = cropper.subjectness_scorer.build_maps(
             image=image,
             saliency_map=saliency_map,
             detected_objects=objects,
+            semantic_heatmaps=semantic_heatmaps,
         )
         subjectness_scores = cropper.subjectness_scorer.score_candidates(
             candidates, subjectness_maps

@@ -284,21 +284,63 @@ class LearnedReranker:
         original_scores = [candidate.final_score for candidate in candidates]
         learned_scores = self.score_candidates(candidates, image_shape)
         blended_scores = []
-        for original, learned in zip(original_scores, learned_scores):
+        for candidate, original, learned in zip(candidates, original_scores, learned_scores):
             if self.blend_with_fusion > 0:
-                blended_scores.append(
+                score = (
                     (1.0 - self.blend_with_fusion) * learned
                     + self.blend_with_fusion * original
                 )
             else:
-                blended_scores.append(learned)
+                score = learned
 
-        best_idx = int(np.argmax(blended_scores))
+            sub = candidate.sub_scores
+            blank_excess = max(0.0, float(sub.blank_area_penalty) - 0.45)
+            artifact_excess = max(0.0, float(sub.visual_artifact_penalty) - 0.45)
+            saturated_foreground_excess = max(
+                0.0, float(sub.small_saturated_object_penalty) - 0.35
+            )
+            low_roi_blank = (
+                0.75
+                if sub.blank_area_penalty > 0.75
+                and sub.roi_discard < 0.15
+                else 0.0
+            )
+            low_info_blank = (
+                0.35
+                if sub.blank_area_penalty > 0.85
+                and sub.roi_saliency < 0.15
+                and sub.saliency < 0.15
+                else 0.0
+            )
+            score -= (
+                0.45 * blank_excess
+                + 0.45 * artifact_excess
+                + 0.50 * saturated_foreground_excess
+                + low_roi_blank
+                + low_info_blank
+            )
+            blended_scores.append(float(np.clip(score, 0.0, 1.0)))
+
+        raw_best_idx = int(np.argmax(blended_scores))
+        best_idx = self._apply_blank_safety_switch(
+            candidates,
+            blended_scores,
+            raw_best_idx,
+        )
+        best_idx = self._apply_quality_safety_switch(
+            candidates,
+            blended_scores,
+            best_idx,
+        )
+        safety_switched = best_idx != raw_best_idx
+        if safety_switched:
+            blended_scores[best_idx] = min(1.0, max(blended_scores) + 1e-6)
         fusion_idx = 0
         learned_advantage = blended_scores[best_idx] - blended_scores[fusion_idx]
         if (
             best_idx != fusion_idx
             and learned_advantage < self.takeover_margin
+            and not safety_switched
         ) or self._is_protected_fusion_top(fusion_top, image_shape):
             for candidate, score in zip(candidates, original_scores):
                 candidate.final_score = score
@@ -306,7 +348,96 @@ class LearnedReranker:
 
         ranked = []
         for candidate, score in zip(candidates, blended_scores):
-            candidate.final_score = float(score)
+            candidate.final_score = float(np.clip(score, 0.0, 1.0))
             ranked.append(candidate)
         ranked.sort(key=lambda c: c.final_score, reverse=True)
         return ranked
+
+    @staticmethod
+    def _apply_blank_safety_switch(
+        candidates: List[CandidateResult],
+        scores: List[float],
+        best_idx: int,
+    ) -> int:
+        best = candidates[best_idx]
+        best_sub = best.sub_scores
+        if best_sub.blank_area_penalty < 0.75 or best_sub.roi_discard >= 0.45:
+            return best_idx
+
+        alternatives = []
+        for idx, candidate in enumerate(candidates):
+            sub = candidate.sub_scores
+            if sub.blank_area_penalty > 0.55:
+                continue
+            if sub.visual_artifact_penalty > 0.50:
+                continue
+            if sub.roi_discard < best_sub.roi_discard + 0.15:
+                continue
+            if scores[idx] < scores[best_idx] * 0.45:
+                continue
+            alternatives.append((scores[idx], sub.roi_discard, idx))
+        if not alternatives:
+            return best_idx
+        alternatives.sort(reverse=True)
+        return alternatives[0][2]
+
+    @staticmethod
+    def _apply_quality_safety_switch(
+        candidates: List[CandidateResult],
+        scores: List[float],
+        best_idx: int,
+    ) -> int:
+        best = candidates[best_idx]
+        b = best.sub_scores
+        best_score = max(1e-9, scores[best_idx])
+
+        alternatives = []
+        for idx, candidate in enumerate(candidates):
+            if idx == best_idx:
+                continue
+            s = candidate.sub_scores
+            rel = scores[idx] / best_score
+
+            full_subject_gain = (
+                b.subject < 0.55
+                and s.subject >= 0.88
+                and s.roi_discard >= b.roi_discard + 0.12
+                and rel >= 0.70
+                and s.blank_area_penalty <= max(0.40, b.blank_area_penalty + 0.10)
+            )
+            cleaner_roi_gain = (
+                s.roi_discard >= b.roi_discard + 0.18
+                and s.visual_artifact_penalty <= b.visual_artifact_penalty - 0.10
+                and s.blank_area_penalty <= b.blank_area_penalty - 0.12
+                and rel >= 0.88
+            )
+            saturated_tiebreak = (
+                rel >= 0.94
+                and s.subject + 0.05 >= b.subject
+                and s.roi_discard + 0.03 >= b.roi_discard
+                and s.small_saturated_object_penalty
+                <= b.small_saturated_object_penalty - 0.015
+                and s.visual_artifact_penalty <= b.visual_artifact_penalty + 0.02
+            )
+            no_subject_cleaner = (
+                b.subject <= 0.05
+                and b.blank_area_penalty + b.visual_artifact_penalty > 0.18
+                and s.blank_area_penalty <= max(0.08, b.blank_area_penalty - 0.08)
+                and s.visual_artifact_penalty <= max(0.08, b.visual_artifact_penalty - 0.04)
+                and s.roi_discard >= b.roi_discard - 0.12
+            )
+
+            if full_subject_gain or cleaner_roi_gain or saturated_tiebreak or no_subject_cleaner:
+                cleanliness = (
+                    s.roi_discard
+                    + 0.25 * s.subject
+                    - 0.35 * s.blank_area_penalty
+                    - 0.35 * s.visual_artifact_penalty
+                    - 0.20 * s.small_saturated_object_penalty
+                )
+                alternatives.append((rel + 0.25 * cleanliness, idx))
+
+        if not alternatives:
+            return best_idx
+        alternatives.sort(reverse=True)
+        return alternatives[0][1]

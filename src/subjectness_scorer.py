@@ -8,12 +8,13 @@ objects/structures are promoted through a subjectness map.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from .utils import BBox, DetectedObject, bbox_area
+from .semantic_heatmap_scorer import SemanticHeatmaps
 
 
 @dataclass
@@ -34,6 +35,8 @@ class SubjectnessScorer:
         self.saliency_weight = float(cfg.get("saliency_weight", 0.45))
         self.structure_weight = float(cfg.get("structure_weight", 0.30))
         self.object_weight = float(cfg.get("object_weight", 0.25))
+        self.semantic_weight = float(cfg.get("semantic_weight", 0.35))
+        self.semantic_negative_weight = float(cfg.get("semantic_negative_weight", 0.40))
         self.distractor_classes = set(
             cfg.get(
                 "distractor_classes",
@@ -46,6 +49,7 @@ class SubjectnessScorer:
         image: np.ndarray,
         saliency_map: np.ndarray,
         detected_objects: List[DetectedObject],
+        semantic_heatmaps: Optional[SemanticHeatmaps] = None,
     ) -> SubjectnessMaps:
         h, w = image.shape[:2]
         sal = self._norm(saliency_map)
@@ -58,6 +62,21 @@ class SubjectnessScorer:
         structure = self._structure_map(image)
         obj_map = np.zeros((h, w), dtype=np.float32)
         distractor = self._foreground_activity_map(image, sal, structure)
+        semantic_subject = (
+            semantic_heatmaps.subject
+            if semantic_heatmaps is not None
+            else np.zeros((h, w), dtype=np.float32)
+        )
+        semantic_negative = (
+            semantic_heatmaps.negative
+            if semantic_heatmaps is not None
+            else np.zeros((h, w), dtype=np.float32)
+        )
+        distractor = np.clip(
+            distractor + self.semantic_negative_weight * semantic_negative,
+            0.0,
+            1.0,
+        )
 
         image_area = max(1, h * w)
         for obj in detected_objects:
@@ -74,8 +93,10 @@ class SubjectnessScorer:
             self.saliency_weight * sal
             + self.structure_weight * structure
             + self.object_weight * obj_map
+            + self.semantic_weight * semantic_subject
         )
-        subjectness = np.clip(subjectness - 0.45 * distractor, 0.0, 1.0)
+        artifact = self._artifact_suppression_map(image, structure)
+        subjectness = np.clip(subjectness - 0.45 * distractor - 0.35 * artifact, 0.0, 1.0)
         return SubjectnessMaps(
             subjectness=self._norm(subjectness),
             distractor=self._norm(distractor),
@@ -127,6 +148,16 @@ class SubjectnessScorer:
         line_strength = np.clip(np.abs(lines) / 120.0, 0.0, 1.0)
         structure = 0.65 * cv2.GaussianBlur(edges, (0, 0), 1.2) + 0.35 * line_strength
         return SubjectnessScorer._norm(structure)
+
+    @staticmethod
+    def _artifact_suppression_map(image: np.ndarray, structure: np.ndarray) -> np.ndarray:
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        sat = np.clip(hsv[:, :, 1] / 255.0, 0.0, 1.0)
+        val = np.clip(hsv[:, :, 2] / 255.0, 0.0, 1.0)
+        flat_white = (sat < 0.16).astype(np.float32) * (val > 0.78).astype(np.float32)
+        flat_color = (sat > 0.62).astype(np.float32) * (structure < 0.08).astype(np.float32)
+        artifact = 0.60 * flat_white + 0.40 * flat_color
+        return SubjectnessScorer._norm(cv2.GaussianBlur(artifact, (0, 0), 3.0))
 
     @staticmethod
     def _norm(values: np.ndarray) -> np.ndarray:

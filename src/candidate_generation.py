@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 
-from .utils import BBox, bbox_area, bbox_aspect_ratio, clamp_bbox, nms
+from .utils import BBox, DetectedObject, bbox_area, bbox_aspect_ratio, clamp_bbox, nms
 
 
 class CandidateGenerator:
@@ -38,6 +38,7 @@ class CandidateGenerator:
         self,
         image: np.ndarray,
         saliency_map: Optional[np.ndarray] = None,
+        detected_objects: Optional[List[DetectedObject]] = None,
     ) -> List[BBox]:
         """Generate candidate bboxes for the given image.
 
@@ -61,6 +62,12 @@ class CandidateGenerator:
             sal_candidates = self._saliency_guided_candidates(saliency_map, h, w, img_area)
             candidates.extend(sal_candidates)
 
+        # --- Subject-guided supplement ---
+        if detected_objects:
+            candidates.extend(
+                self._object_guided_candidates(detected_objects, h, w, img_area)
+            )
+
         # --- Filtering ---
         filtered = self._filter_candidates(candidates, h, w, img_area)
 
@@ -78,6 +85,41 @@ class CandidateGenerator:
             filtered = filtered[:self.top_k]
 
         return filtered
+
+    def _candidate_at_center(
+        self,
+        cx: float,
+        cy: float,
+        area_r: float,
+        ar: float,
+        h: int,
+        w: int,
+        img_area: int,
+    ) -> Optional[BBox]:
+        area = int(img_area * area_r)
+        crop_h = int(math.sqrt(area / max(1e-6, ar)))
+        crop_w = int(crop_h * ar)
+        if crop_h < 8 or crop_w < 8:
+            return None
+        if crop_h > h or crop_w > w:
+            return None
+        x1 = int(round(cx - crop_w / 2))
+        y1 = int(round(cy - crop_h / 2))
+        bbox = clamp_bbox((x1, y1, x1 + crop_w, y1 + crop_h), h, w)
+        bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        if bw >= 8 and bh >= 8:
+            return bbox
+        return None
+
+    def _active_aspect_ratios(self, h: int, w: int) -> List[float]:
+        if self.preserve_original_aspect:
+            return [w / max(1, h)]
+        aspect_ratios = list(self.aspect_ratios)
+        if self.use_original_ratio:
+            orig_ratio = w / max(1, h)
+            if orig_ratio not in aspect_ratios:
+                aspect_ratios.append(orig_ratio)
+        return aspect_ratios
 
     @staticmethod
     def _scale_prior(area_ratio: float) -> float:
@@ -119,14 +161,7 @@ class CandidateGenerator:
         gx = np.linspace(0.05, 0.95, self.grid_size + 2, dtype=float)[1:-1]
         gy = np.linspace(0.05, 0.95, self.grid_size + 2, dtype=float)[1:-1]
 
-        if self.preserve_original_aspect:
-            aspect_ratios = [w / max(1, h)]
-        else:
-            aspect_ratios = list(self.aspect_ratios)
-            if self.use_original_ratio:
-                orig_ratio = w / max(1, h)
-                if orig_ratio not in aspect_ratios:
-                    aspect_ratios.append(orig_ratio)
+        aspect_ratios = self._active_aspect_ratios(h, w)
 
         for cx_pct in gx:
             for cy_pct in gy:
@@ -134,20 +169,8 @@ class CandidateGenerator:
                 cy = int(cy_pct * h)
                 for ar in aspect_ratios:
                     for area_r in self.area_ratios:
-                        area = int(img_area * area_r)
-                        crop_h = int(math.sqrt(area / max(1e-6, ar)))
-                        crop_w = int(crop_h * ar)
-                        if crop_h < 8 or crop_w < 8:
-                            continue
-                        if crop_h > h or crop_w > w:
-                            continue
-                        x1 = cx - crop_w // 2
-                        y1 = cy - crop_h // 2
-                        x2 = x1 + crop_w
-                        y2 = y1 + crop_h
-                        bbox = clamp_bbox((x1, y1, x2, y2), h, w)
-                        bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-                        if bw >= 8 and bh >= 8:
+                        bbox = self._candidate_at_center(cx, cy, area_r, ar, h, w, img_area)
+                        if bbox is not None:
                             candidates.append(bbox)
         return candidates
 
@@ -193,32 +216,48 @@ class CandidateGenerator:
                 peaks.append((cx, cy))
 
         # Generate candidates around each peak
-        if self.preserve_original_aspect:
-            aspect_ratios = [w / max(1, h)]
-        else:
-            aspect_ratios = list(self.aspect_ratios)
-            if self.use_original_ratio:
-                orig_ratio = w / max(1, h)
-                if orig_ratio not in aspect_ratios:
-                    aspect_ratios.append(orig_ratio)
+        aspect_ratios = self._active_aspect_ratios(h, w)
 
         for cx, cy in peaks:
             for ar in aspect_ratios:
                 for area_r in self.area_ratios:
-                    area = int(img_area * area_r)
-                    crop_h = int(math.sqrt(area / max(1e-6, ar)))
-                    crop_w = int(crop_h * ar)
-                    if crop_h < 8 or crop_w < 8:
-                        continue
-                    if crop_h > h or crop_w > w:
-                        continue
-                    x1 = cx - crop_w // 2
-                    y1 = cy - crop_h // 2
-                    x2 = x1 + crop_w
-                    y2 = y1 + crop_h
-                    bbox = clamp_bbox((x1, y1, x2, y2), h, w)
-                    bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-                    if bw >= 8 and bh >= 8:
+                    bbox = self._candidate_at_center(cx, cy, area_r, ar, h, w, img_area)
+                    if bbox is not None:
+                        candidates.append(bbox)
+        return candidates
+
+    def _object_guided_candidates(
+        self,
+        detected_objects: List[DetectedObject],
+        h: int,
+        w: int,
+        img_area: int,
+    ) -> List[BBox]:
+        """Generate candidates centered on individual objects and object groups."""
+        centers: List[Tuple[float, float]] = []
+        significant = []
+        for obj in detected_objects:
+            x1, y1, x2, y2 = obj.bbox
+            area_ratio = bbox_area(obj.bbox) / max(1, img_area)
+            if area_ratio < 0.003:
+                continue
+            centers.append(((x1 + x2) / 2.0, (y1 + y2) / 2.0))
+            if area_ratio >= 0.01:
+                significant.append(obj.bbox)
+
+        if significant:
+            gx1 = min(box[0] for box in significant)
+            gy1 = min(box[1] for box in significant)
+            gx2 = max(box[2] for box in significant)
+            gy2 = max(box[3] for box in significant)
+            centers.append(((gx1 + gx2) / 2.0, (gy1 + gy2) / 2.0))
+
+        candidates: List[BBox] = []
+        for cx, cy in centers:
+            for ar in self._active_aspect_ratios(h, w):
+                for area_r in self.area_ratios:
+                    bbox = self._candidate_at_center(cx, cy, area_r, ar, h, w, img_area)
+                    if bbox is not None:
                         candidates.append(bbox)
         return candidates
 

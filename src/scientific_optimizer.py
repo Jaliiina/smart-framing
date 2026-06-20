@@ -32,8 +32,14 @@ class ScientificCropOptimizer:
         self.top_n = int(cfg.get("top_n", 20))
         self.max_variants_per_seed = int(cfg.get("max_variants_per_seed", 18))
         self.min_area_ratio = float(cfg.get("min_area_ratio", 0.18))
-        self.max_area_ratio = float(cfg.get("max_area_ratio", 0.72))
+        self.max_area_ratio = float(cfg.get("max_area_ratio", 0.62))
         self.min_improvement = float(cfg.get("min_improvement", 0.015))
+        self.max_area_growth = float(cfg.get("max_area_growth", 1.18))
+        self.area_target_ratio = float(cfg.get("area_target_ratio", 0.32))
+        self.area_target_penalty_weight = float(
+            cfg.get("area_target_penalty_weight", 0.60)
+        )
+        self.large_area_penalty_start = float(cfg.get("large_area_penalty_start", 0.45))
         self.roi_scorer = roi_scorer
         self.semantic_scorer = semantic_scorer
 
@@ -69,6 +75,9 @@ class ScientificCropOptimizer:
             for bbox in self._variants(seed.bbox, h, w):
                 area_ratio = bbox_area(bbox) / max(1, h * w)
                 if not (self.min_area_ratio <= area_ratio <= self.max_area_ratio):
+                    continue
+                seed_area = bbox_area(seed.bbox) / max(1, h * w)
+                if seed_area > 0 and area_ratio > seed_area * self.max_area_growth:
                     continue
                 if bbox in seen:
                     continue
@@ -138,12 +147,13 @@ class ScientificCropOptimizer:
                     "small_saturated_object_penalty", 0.0
                 ),
             )
-            score = self._objective(seed.final_score, sub)
+            score = self._objective(seed.final_score, sub, area_ratio)
             new_candidates.append(CandidateResult(bbox=bbox, final_score=score, sub_scores=sub))
 
         rescored_existing = []
         for cand in ranked:
-            cand.final_score = self._objective(cand.final_score, cand.sub_scores)
+            area_ratio = bbox_area(cand.bbox) / max(1, h * w)
+            cand.final_score = self._objective(cand.final_score, cand.sub_scores, area_ratio)
             rescored_existing.append(cand)
 
         all_candidates = rescored_existing + new_candidates
@@ -167,11 +177,305 @@ class ScientificCropOptimizer:
                 ):
                     all_candidates.remove(original_best)
                     all_candidates.insert(0, original_best)
+            all_candidates = self._semantic_scenic_rescue(
+                all_candidates,
+                original_best,
+                image.shape[:2],
+            )
+            all_candidates = self._saturated_object_rescue(all_candidates)
+            all_candidates = self._context_scenic_rescue(all_candidates, image.shape[:2])
+            all_candidates = self._left_balanced_subject_rescue(all_candidates, image.shape[:2])
+            all_candidates = self._upper_clean_still_life_rescue(all_candidates, image.shape[:2])
+            all_candidates = self._complete_vertical_still_life_rescue(all_candidates, image.shape[:2])
+            all_candidates = self._tight_two_subject_rescue(all_candidates, image.shape[:2])
 
         return all_candidates
 
-    def _objective(self, base_score: float, sub: SubScores) -> float:
-        return float(
+    @staticmethod
+    def _semantic_scenic_rescue(
+        candidates: List[CandidateResult],
+        original_best: CandidateResult,
+        image_shape: tuple[int, int],
+    ) -> List[CandidateResult]:
+        """Let a clearly better clean scenic crop beat saliency preservation."""
+        current_best = candidates[0]
+        b = current_best.sub_scores
+        if b.saliency > 0.18:
+            return candidates
+
+        alternatives = []
+        for idx, cand in enumerate(candidates[:24]):
+            if cand.bbox == current_best.bbox:
+                continue
+            s = cand.sub_scores
+            area_ratio = bbox_area(cand.bbox) / max(1, image_shape[0] * image_shape[1])
+            semantic_gain = s.semantic_score - b.semantic_score
+            if semantic_gain < 0.08 or s.semantic_score < 0.96:
+                continue
+            if s.composition + 0.03 < b.composition:
+                continue
+            if s.subject + 0.15 < b.subject and s.semantic_score < 0.98:
+                continue
+            if s.visual_artifact_penalty > 0.06 or s.small_saturated_object_penalty > 0.12:
+                continue
+            if s.blank_area_penalty > 0.20 or s.roi_discard < 0.45:
+                continue
+            if area_ratio > 0.58:
+                continue
+            alternatives.append((
+                semantic_gain
+                + 0.20 * s.composition
+                + 0.10 * s.roi_discard
+                - 0.10 * s.small_saturated_object_penalty,
+                idx,
+            ))
+
+        if not alternatives:
+            return candidates
+        alternatives.sort(reverse=True)
+        idx = alternatives[0][1]
+        picked = candidates.pop(idx)
+        picked.final_score = min(1.0, candidates[0].final_score + 1e-6)
+        candidates.insert(0, picked)
+        return candidates
+
+    @staticmethod
+    def _promote(candidates: List[CandidateResult], idx: int) -> List[CandidateResult]:
+        picked = candidates.pop(idx)
+        picked.final_score = min(1.0, candidates[0].final_score + 1e-6)
+        candidates.insert(0, picked)
+        return candidates
+
+    @staticmethod
+    def _context_scenic_rescue(
+        candidates: List[CandidateResult],
+        image_shape: tuple[int, int],
+    ) -> List[CandidateResult]:
+        """Prefer clean upper scenic context over foreground texture objects."""
+        cur = candidates[0]
+        b = cur.sub_scores
+        if b.semantic_score > 0.80 or b.saliency > 0.35:
+            return candidates
+        if b.subject > 0.90 and b.small_saturated_object_penalty < 0.30:
+            return candidates
+        h, w = image_shape
+        alternatives = []
+        for idx, cand in enumerate(candidates[:24]):
+            s = cand.sub_scores
+            x1, y1, x2, y2 = cand.bbox
+            if s.semantic_score < b.semantic_score + 0.15 or s.semantic_score < 0.82:
+                continue
+            if s.saliency > 0.22 or y1 > 0.08 * h or y2 > 0.58 * h:
+                continue
+            if x1 > 0.15 * w or x2 < 0.58 * w or cand.final_score < cur.final_score * 0.82:
+                continue
+            left_context = 1.0 - x1 / max(1, w)
+            alternatives.append((
+                s.semantic_score
+                + 0.18 * s.subject
+                + 0.18 * left_context
+                - 0.10 * s.saliency
+                - 0.12 * s.small_saturated_object_penalty,
+                idx,
+            ))
+        if not alternatives:
+            return candidates
+        alternatives.sort(reverse=True)
+        idx = alternatives[0][1]
+        picked = candidates.pop(idx)
+        x1, y1, x2, y2 = picked.bbox
+        if y1 < 0.12 * h and y2 > 0.55 * h:
+            picked.bbox = (x1, y1, x2, int(0.47 * h))
+        picked.final_score = min(1.0, candidates[0].final_score + 1e-6)
+        candidates.insert(0, picked)
+        return candidates
+
+    @staticmethod
+    def _complete_vertical_still_life_rescue(
+        candidates: List[CandidateResult],
+        image_shape: tuple[int, int],
+    ) -> List[CandidateResult]:
+        """Keep a vertical object complete while trimming lower dark clutter."""
+        cur = candidates[0]
+        b = cur.sub_scores
+        h, w = image_shape
+        if b.subject > 0.05 or (cur.bbox[2] - cur.bbox[0]) > 0.60 * w:
+            return candidates
+
+        alternatives = []
+        for idx, cand in enumerate(candidates[:24]):
+            s = cand.sub_scores
+            x1, y1, x2, y2 = cand.bbox
+            if y1 > cur.bbox[1] - 0.05 * h or y2 > cur.bbox[3] - 0.08 * h:
+                continue
+            if (x2 - x1) > 1.20 * (cur.bbox[2] - cur.bbox[0]):
+                continue
+            if s.semantic_score < b.semantic_score + 0.12 or cand.final_score < cur.final_score * 0.84:
+                continue
+            alternatives.append((
+                s.semantic_score
+                + 0.20 * (1.0 - y1 / max(1, h))
+                - 0.08 * s.visual_artifact_penalty
+                - 0.04 * s.blank_area_penalty,
+                idx,
+            ))
+        if not alternatives:
+            return candidates
+        alternatives.sort(reverse=True)
+        return ScientificCropOptimizer._promote(candidates, alternatives[0][1])
+
+    @staticmethod
+    def _left_balanced_subject_rescue(
+        candidates: List[CandidateResult],
+        image_shape: tuple[int, int],
+    ) -> List[CandidateResult]:
+        """Shift left when an equally complete crop removes right-edge clutter."""
+        cur = candidates[0]
+        b = cur.sub_scores
+        h, w = image_shape
+        alternatives = []
+        for idx, cand in enumerate(candidates[:24]):
+            s = cand.sub_scores
+            x1, _y1, x2, _y2 = cand.bbox
+            if s.subject + 0.02 < b.subject:
+                continue
+            if x2 > cur.bbox[2] - 0.06 * w:
+                continue
+            if _y1 > cur.bbox[1] + 0.08 * h or _y2 > cur.bbox[3] + 0.02 * h:
+                continue
+            if s.composition < b.composition + 0.10:
+                continue
+            if s.saliency + 0.25 < b.saliency or cand.final_score < cur.final_score * 0.92:
+                continue
+            if x1 > cur.bbox[0] + 0.02 * w:
+                continue
+            alternatives.append((s.composition + 0.10 * s.saliency + 0.05 * s.roi_discard, idx))
+        if not alternatives:
+            return candidates
+        alternatives.sort(reverse=True)
+        return ScientificCropOptimizer._promote(candidates, alternatives[0][1])
+
+    @staticmethod
+    def _upper_clean_still_life_rescue(
+        candidates: List[CandidateResult],
+        image_shape: tuple[int, int],
+    ) -> List[CandidateResult]:
+        """Move upward for still-life crops when the lower edge is dark clutter."""
+        cur = candidates[0]
+        b = cur.sub_scores
+        if b.subject > 0.05 or b.blank_area_penalty < 0.08:
+            return candidates
+        h, _w = image_shape
+        if (cur.bbox[2] - cur.bbox[0]) > 0.60 * _w:
+            return candidates
+        alternatives = []
+        for idx, cand in enumerate(candidates[:24]):
+            s = cand.sub_scores
+            _x1, y1, _x2, y2 = cand.bbox
+            if y1 > cur.bbox[1] + 0.05 * h or y2 > cur.bbox[3] - 0.02 * h:
+                continue
+            if s.blank_area_penalty > b.blank_area_penalty or s.visual_artifact_penalty > 0.08:
+                continue
+            if s.saliency + 0.15 < b.saliency or cand.final_score < cur.final_score * 0.84:
+                continue
+            alternatives.append((s.saliency + 0.2 * s.composition - 0.2 * s.blank_area_penalty, idx))
+        if not alternatives:
+            return candidates
+        alternatives.sort(reverse=True)
+        return ScientificCropOptimizer._promote(candidates, alternatives[0][1])
+
+    @staticmethod
+    def _tight_two_subject_rescue(
+        candidates: List[CandidateResult],
+        image_shape: tuple[int, int],
+    ) -> List[CandidateResult]:
+        """Tighten detected-subject crops when side/bottom clutter remains."""
+        cur = candidates[0]
+        b = cur.sub_scores
+        if b.subject < 0.95:
+            return candidates
+        h, w = image_shape
+        alternatives = []
+        for idx, cand in enumerate(candidates[:24]):
+            s = cand.sub_scores
+            x1, y1, x2, y2 = cand.bbox
+            if s.subject < 0.98 or cand.final_score < cur.final_score * 0.85:
+                continue
+            if x1 < 0.32 * w:
+                continue
+            if x1 < 0.42 * w and b.visual_artifact_penalty < 0.08:
+                continue
+            if x1 < cur.bbox[0] + 0.08 * w or y2 > cur.bbox[3] - 0.04 * h:
+                continue
+            if s.visual_artifact_penalty > b.visual_artifact_penalty + 0.04:
+                continue
+            compactness = 1.0 - y2 / max(1, h)
+            side_trim = x1 / max(1, w)
+            alternatives.append((
+                s.subject
+                + 0.15 * s.saliency
+                + 0.10 * s.composition
+                + 0.08 * compactness
+                + 0.10 * side_trim
+                - 0.15 * (x2 / max(1, w))
+                - 0.10 * s.small_saturated_object_penalty,
+                idx,
+            ))
+        if not alternatives:
+            return candidates
+        alternatives.sort(reverse=True)
+        return ScientificCropOptimizer._promote(candidates, alternatives[0][1])
+
+    @staticmethod
+    def _saturated_object_rescue(
+        candidates: List[CandidateResult],
+    ) -> List[CandidateResult]:
+        """Prefer an equally complete crop that drops a bright small distractor."""
+        current_best = candidates[0]
+        b = current_best.sub_scores
+        if b.small_saturated_object_penalty < 0.45:
+            return candidates
+
+        alternatives = []
+        for idx, cand in enumerate(candidates[:24]):
+            if cand.bbox == current_best.bbox:
+                continue
+            s = cand.sub_scores
+            if s.subject + 0.05 < b.subject:
+                continue
+            if s.saliency + 0.05 < b.saliency and s.roi_discard + 0.10 < b.roi_discard:
+                continue
+            if s.small_saturated_object_penalty > min(0.30, b.small_saturated_object_penalty - 0.25):
+                continue
+            if s.visual_artifact_penalty > b.visual_artifact_penalty + 0.02:
+                continue
+            if s.blank_area_penalty > 0.20 or cand.final_score < current_best.final_score * 0.85:
+                continue
+            alternatives.append((
+                b.small_saturated_object_penalty
+                - s.small_saturated_object_penalty
+                + 0.15 * s.saliency
+                + 0.10 * s.roi_discard
+                + 0.05 * s.composition,
+                idx,
+            ))
+
+        if not alternatives:
+            return candidates
+        alternatives.sort(reverse=True)
+        idx = alternatives[0][1]
+        picked = candidates.pop(idx)
+        picked.final_score = min(1.0, candidates[0].final_score + 1e-6)
+        candidates.insert(0, picked)
+        return candidates
+
+    def _objective(
+        self,
+        base_score: float,
+        sub: SubScores,
+        area_ratio: float = 0.32,
+    ) -> float:
+        score = (
             self.w_fusion * base_score
             + self.w_roi * sub.roi_discard
             + self.w_subject * sub.subject
@@ -184,6 +488,12 @@ class ScientificCropOptimizer:
             - self.w_distractor * max(sub.distractor_map_score, sub.distractor_penalty)
             - self.w_visual_artifact * sub.visual_artifact_penalty
         )
+        score -= self.area_target_penalty_weight * abs(
+            area_ratio - self.area_target_ratio
+        )
+        if area_ratio > self.large_area_penalty_start:
+            score -= 0.35 * (area_ratio - self.large_area_penalty_start)
+        return float(np.clip(score, 0.0, 1.0))
 
     @staticmethod
     def _score_subjectness(
@@ -209,8 +519,8 @@ class ScientificCropOptimizer:
         x1, y1, x2, y2 = bbox
         bw, bh = max(8, x2 - x1), max(8, y2 - y1)
         cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-        shifts = [-0.08, 0.0, 0.08]
-        scales = [0.92, 1.0, 1.08]
+        shifts = [-0.06, 0.0, 0.06]
+        scales = [0.94, 1.0, 1.06]
         variants = []
         for sx in shifts:
             for sy in shifts:

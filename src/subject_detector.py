@@ -310,11 +310,13 @@ class SubjectDetector:
             weighted_inclusion = 0.0
             boundary_penalty = 0.0
             weighted_tightness = 0.0
+            inclusions = []
 
             for obj, ow in zip(important_objects, obj_weights):
                 inter_area = bbox_intersection(bbox, obj.bbox)
                 obj_area = max(1, bbox_area(obj.bbox))
                 inclusion = inter_area / obj_area
+                inclusions.append(inclusion)
 
                 weighted_inclusion += ow * inclusion
 
@@ -335,6 +337,10 @@ class SubjectDetector:
             avg_inclusion = weighted_inclusion / total_weight
             if area_ratio >= 0.32 and avg_inclusion >= self.min_important_inclusion:
                 score += 0.10
+            if len(inclusions) >= 2:
+                min_inclusion = min(inclusions)
+                group_completeness = 0.55 * avg_inclusion + 0.45 * min_inclusion
+                score *= float(np.clip(0.35 + 0.65 * group_completeness, 0.0, 1.0))
             score = min(1.0, score)
 
             per_candidate_scores.append(score)

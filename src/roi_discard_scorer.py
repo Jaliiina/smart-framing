@@ -274,15 +274,33 @@ class RoiDiscardScorer:
         for label in range(1, n_labels):
             area = int(stats[label, cv2.CC_STAT_AREA])
             area_ratio = area / crop_area
-            if area_ratio < 0.006 or area_ratio > 0.12:
+            if area_ratio < 0.002 or area_ratio > 0.42:
                 continue
             cx, cy = centroids[label]
+            x0 = int(stats[label, cv2.CC_STAT_LEFT])
+            y0 = int(stats[label, cv2.CC_STAT_TOP])
+            ww = int(stats[label, cv2.CC_STAT_WIDTH])
+            hh = int(stats[label, cv2.CC_STAT_HEIGHT])
             x = cx / max(1, w)
             y = cy / max(1, h)
             lower_prior = np.clip((y - 0.38) / 0.48, 0.0, 1.0)
             side_prior = max(abs(x - 0.5) * 2.0, 0.0)
-            foreground_prior = 0.80 * lower_prior + 0.20 * side_prior
-            area_score = np.clip((area_ratio - 0.004) / 0.030, 0.0, 1.0)
+            touches_border = (
+                x0 <= 2
+                or y0 <= 2
+                or x0 + ww >= w - 2
+                or y0 + hh >= h - 2
+            )
+            border_prior = 1.0 if touches_border else 0.0
+            foreground_prior = (
+                0.64 * lower_prior
+                + 0.22 * side_prior
+                + 0.14 * border_prior
+            )
+            if area_ratio <= 0.12:
+                area_score = np.clip((area_ratio - 0.0015) / 0.020, 0.0, 1.0)
+            else:
+                area_score = np.clip((area_ratio - 0.08) / 0.20, 0.0, 1.0)
             penalty = max(penalty, float(area_score * foreground_prior))
         return float(np.clip(penalty, 0.0, 1.0))
 

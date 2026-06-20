@@ -76,6 +76,7 @@ fusion:
   top_k_display: 3
   area_target_ratio: 0.38
   area_target_penalty_weight: 0.18
+  score_clip_enabled: true
   edge_adjacency_penalty_enabled: true
   edge_adjacency_penalty_threshold: 0.03
   edge_adjacency_penalty_strength: 0.10
@@ -153,6 +154,34 @@ semantic_crop:
     - "large blank white area"
     - "large flat color area"
     - "cropped cut off object"
+
+semantic_heatmap:
+  enabled: false
+  clip_model: "ViT-L/14"
+  window_ratios: [0.36]
+  stride_ratio: 0.30
+  context_top_k: 3
+  positive_prompts:
+    - "well composed landscape photograph"
+    - "well composed cityscape photograph"
+    - "well composed portrait or documentary photograph"
+    - "well composed architecture photograph"
+    - "well composed still life photograph"
+    - "beautiful natural scene photograph"
+    - "clear complete main subject"
+    - "balanced foreground middle ground and background"
+    - "strong visual focal point"
+    - "professional photographic crop"
+  negative_prompts:
+    - "cluttered random foreground"
+    - "distracting foreground obstruction"
+    - "unimportant ground texture"
+    - "dirty or messy area"
+    - "large blank white area"
+    - "large flat color area"
+    - "cut off main subject"
+    - "poorly framed partial object"
+    - "accidental snapshot crop"
 
 subjectness:
   enabled: true

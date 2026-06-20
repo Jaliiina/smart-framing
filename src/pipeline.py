@@ -60,6 +60,7 @@ class AestheticCropper:
         from .reranker import LearnedReranker
         from .roi_discard_scorer import RoiDiscardScorer
         from .semantic_crop_scorer import SemanticCropScorer
+        from .semantic_heatmap_scorer import SemanticHeatmapScorer
         from .scientific_optimizer import ScientificCropOptimizer
         from .subjectness_scorer import SubjectnessScorer
 
@@ -70,6 +71,7 @@ class AestheticCropper:
         self.comp_scorer = CompositionScorer(self.config)
         self.tech_scorer = TechnicalQualityScorer(self.config)
         self.semantic_crop_scorer = SemanticCropScorer(self.config)
+        self.semantic_heatmap_scorer = SemanticHeatmapScorer(self.config)
         self.subjectness_scorer = SubjectnessScorer(self.config)
         self.roi_discard_scorer = RoiDiscardScorer(self.config)
         self.fusion = FusionModule(self.config)
@@ -159,7 +161,9 @@ class AestheticCropper:
         has_subject = len(detected_objects) > 0
 
         # --- Step 3: Generate candidates (grid + saliency-guided) ---
-        candidates = self.candidate_gen.generate(image, saliency_map)
+        candidates = self.candidate_gen.generate(
+            image, saliency_map, detected_objects=detected_objects
+        )
         logger.info(f"Generated {len(candidates)} candidates for {image_path}")
 
         if len(candidates) == 0:
@@ -203,10 +207,12 @@ class AestheticCropper:
         technical_scores = self.tech_scorer.score_candidates(image, candidates)
 
         # 4f. Semantic subjectness and distractor-aware ROI/discard scores
+        semantic_heatmaps = self.semantic_heatmap_scorer.build_heatmaps(image)
         subjectness_maps = self.subjectness_scorer.build_maps(
             image=image,
             saliency_map=saliency_map,
             detected_objects=detected_objects,
+            semantic_heatmaps=semantic_heatmaps,
         )
         subjectness_scores = self.subjectness_scorer.score_candidates(
             candidates, subjectness_maps

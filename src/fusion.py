@@ -92,6 +92,7 @@ class FusionModule:
         self._robust_rank_veto_strength: float = float(
             robust_cfg.get("veto_strength", 0.28)
         )
+        self.score_clip_enabled: bool = bool(fcfg.get("score_clip_enabled", True))
 
     def fuse(
         self,
@@ -336,6 +337,9 @@ class FusionModule:
             final_scores = final_scores - self.area_target_penalty_weight * np.abs(
                 area_ratios - self.area_target_ratio
             )
+
+        if self.score_clip_enabled:
+            final_scores = np.clip(final_scores, 0.0, 1.0)
 
         # --- Build results ---
         candidates = []
@@ -613,7 +617,7 @@ class FusionModule:
             return best
 
         best_area = self._area_ratio(best.bbox, image_shape)
-        if best_area <= 0.80:
+        if best_area <= 0.68:
             complete = self._prefer_complete_close_candidate(
                 best,
                 candidates,
@@ -625,11 +629,11 @@ class FusionModule:
                 return complete
             return best
 
-        for cand in candidates[:10]:
+        for cand in candidates[:12]:
             area = self._area_ratio(cand.bbox, image_shape)
             subject_ok = (not has_subject) or cand.sub_scores.subject >= 0.70
-            score_close = cand.final_score >= best.final_score * 0.92
-            if 0.25 <= area <= 0.65 and subject_ok and score_close:
+            score_close = cand.final_score >= best.final_score * 0.90
+            if 0.25 <= area <= 0.62 and subject_ok and score_close:
                 return cand
         return best
 
