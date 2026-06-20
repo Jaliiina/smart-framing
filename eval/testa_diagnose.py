@@ -95,6 +95,23 @@ def main() -> None:
             candidates, objects, image.shape
         )
         technical_scores = cropper.tech_scorer.score_candidates(image, candidates)
+        subjectness_maps = cropper.subjectness_scorer.build_maps(
+            image=image,
+            saliency_map=saliency_map,
+            detected_objects=objects,
+        )
+        subjectness_scores = cropper.subjectness_scorer.score_candidates(
+            candidates, subjectness_maps
+        )
+        semantic_scores = cropper.semantic_crop_scorer.score_candidates(image, candidates)
+        roi_discard_scores = cropper.roi_discard_scorer.score_candidates(
+            image=image,
+            bboxes=candidates,
+            saliency_map=saliency_map,
+            detected_objects=objects,
+            subjectness_maps=subjectness_maps,
+            semantic_scores=semantic_scores,
+        )
 
         original_top_k = cropper.fusion.top_k_display
         cropper.fusion.top_k_display = len(candidates)
@@ -106,6 +123,9 @@ def main() -> None:
                 composition_scores=composition_scores,
                 subject_scores=subject_scores,
                 technical_scores=technical_scores,
+                roi_discard_scores=roi_discard_scores,
+                semantic_scores=semantic_scores,
+                subjectness_scores=subjectness_scores,
                 saliency_is_uniform=is_uniform,
                 has_subject=any(score is not None for score in subject_scores),
                 image_shape=image.shape,
@@ -117,6 +137,14 @@ def main() -> None:
             if getattr(cropper, "reranker", None) is not None:
                 ranked = cropper.reranker.rerank(ranked, image.shape[:2])
                 best = ranked[0]
+            ranked = cropper.scientific_optimizer.optimize(
+                image=image,
+                ranked=ranked,
+                detected_objects=objects,
+                saliency_map=saliency_map,
+                subjectness_maps=subjectness_maps,
+            )
+            best = ranked[0]
         finally:
             cropper.fusion.top_k_display = original_top_k
 

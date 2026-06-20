@@ -37,6 +37,22 @@ FEATURE_NAMES = [
     "contrast",
     "saturation",
     "person_completeness",
+    "roi_discard",
+    "roi_saliency",
+    "discard_quality",
+    "boundary_cut",
+    "distractor_penalty",
+    "semantic_score",
+    "positive_semantic",
+    "negative_semantic",
+    "subjectness",
+    "distractor_map_score",
+    "good_discard",
+    "bad_discard",
+    "visual_artifact_penalty",
+    "blank_area_penalty",
+    "saturated_boundary_penalty",
+    "small_saturated_object_penalty",
     "cx",
     "cy",
     "width",
@@ -52,6 +68,12 @@ FEATURE_NAMES = [
     "aesthetic_x_composition",
     "saliency_x_center_balance",
     "subject_x_area",
+    "roi_x_discard",
+    "boundary_x_saliency",
+    "semantic_x_subjectness",
+    "distractor_x_boundary",
+    "subjectness_x_area",
+    "semantic_minus_distractor",
 ]
 
 
@@ -104,12 +126,34 @@ def candidate_feature_vector(
         "contrast": float(sub.contrast),
         "saturation": float(sub.saturation),
         "person_completeness": float(sub.person_completeness),
+        "roi_discard": float(sub.roi_discard),
+        "roi_saliency": float(sub.roi_saliency),
+        "discard_quality": float(sub.discard_quality),
+        "boundary_cut": float(sub.boundary_cut),
+        "distractor_penalty": float(sub.distractor_penalty),
+        "semantic_score": float(sub.semantic_score),
+        "positive_semantic": float(sub.positive_semantic),
+        "negative_semantic": float(sub.negative_semantic),
+        "subjectness": float(sub.subjectness),
+        "distractor_map_score": float(sub.distractor_map_score),
+        "good_discard": float(sub.good_discard),
+        "bad_discard": float(sub.bad_discard),
+        "visual_artifact_penalty": float(sub.visual_artifact_penalty),
+        "blank_area_penalty": float(sub.blank_area_penalty),
+        "saturated_boundary_penalty": float(sub.saturated_boundary_penalty),
+        "small_saturated_object_penalty": float(sub.small_saturated_object_penalty),
     }
     values.update(_bbox_features(candidate.bbox, image_shape))
     values["fusion_x_area_prior"] = values["fusion_score"] * values["area_prior"]
     values["aesthetic_x_composition"] = values["aesthetic"] * values["composition"]
     values["saliency_x_center_balance"] = values["saliency"] * values["center_balance"]
     values["subject_x_area"] = values["subject"] * values["area"]
+    values["roi_x_discard"] = values["roi_saliency"] * values["discard_quality"]
+    values["boundary_x_saliency"] = values["boundary_cut"] * values["saliency"]
+    values["semantic_x_subjectness"] = values["semantic_score"] * values["subjectness"]
+    values["distractor_x_boundary"] = values["distractor_map_score"] * values["boundary_cut"]
+    values["subjectness_x_area"] = values["subjectness"] * values["area"]
+    values["semantic_minus_distractor"] = values["semantic_score"] - values["distractor_map_score"]
     return [values[name] for name in FEATURE_NAMES]
 
 
@@ -164,17 +208,9 @@ class LearnedReranker:
             else float(data.get("large_area_takeover_threshold", 0.50))
         )
         if data.get("type") == "knn_candidate_reranker":
-            return KNNReranker(
-                train_features=np.array(data["train_features"], dtype=np.float64),
-                train_targets=np.array(data["train_targets"], dtype=np.float64),
-                mean=np.array(data["mean"], dtype=np.float64),
-                scale=np.array(data["scale"], dtype=np.float64),
-                feature_names=list(data["feature_names"]),
-                k=int(data.get("k", 1)),
-                blend_with_fusion=blend,
-                takeover_margin=margin,
-                protect_high_quality_fusion=protect,
-            )
+            raise ValueError("KNN reranker is deprecated; retrain with pairwise ridge.")
+        if len(data.get("feature_names", [])) != len(FEATURE_NAMES):
+            raise ValueError("Reranker feature schema mismatch; retrain the model.")
         return cls(
             coefficients=np.array(data["coefficients"], dtype=np.float64),
             mean=np.array(data["mean"], dtype=np.float64),
@@ -271,67 +307,6 @@ class LearnedReranker:
         ranked = []
         for candidate, score in zip(candidates, blended_scores):
             candidate.final_score = float(score)
-            ranked.append(candidate)
-        ranked.sort(key=lambda c: c.final_score, reverse=True)
-        return ranked
-
-
-@dataclass
-class KNNReranker:
-    """Case-based reranker using candidate examples labeled by IoU."""
-
-    train_features: np.ndarray
-    train_targets: np.ndarray
-    mean: np.ndarray
-    scale: np.ndarray
-    feature_names: list[str]
-    k: int = 1
-    blend_with_fusion: float = 0.0
-    takeover_margin: float = 0.04
-    protect_high_quality_fusion: bool = True
-
-    def score_candidates(
-        self,
-        candidates: Iterable[CandidateResult],
-        image_shape: Sequence[int],
-    ) -> List[float]:
-        rows = [
-            candidate_feature_vector(candidate, image_shape)
-            for candidate in candidates
-        ]
-        if not rows:
-            return []
-        x = np.array(rows, dtype=np.float64)
-        x[:, 1:] = (x[:, 1:] - self.mean[1:]) / self.scale[1:]
-        scores = []
-        k = max(1, min(self.k, len(self.train_targets)))
-        for row in x:
-            dist = np.sqrt(((self.train_features - row) ** 2).sum(axis=1))
-            nn_idx = np.argpartition(dist, k - 1)[:k]
-            if k == 1:
-                scores.append(float(self.train_targets[nn_idx[0]]))
-            else:
-                weights = 1.0 / (dist[nn_idx] + 1e-6)
-                scores.append(float((weights * self.train_targets[nn_idx]).sum() / weights.sum()))
-        return scores
-
-    def rerank(
-        self,
-        candidates: List[CandidateResult],
-        image_shape: Sequence[int],
-    ) -> List[CandidateResult]:
-        if not candidates:
-            return candidates
-        learned_scores = self.score_candidates(candidates, image_shape)
-        ranked = []
-        for candidate, learned in zip(candidates, learned_scores):
-            if self.blend_with_fusion > 0:
-                candidate.final_score = (
-                    (1.0 - self.blend_with_fusion) * learned
-                    + self.blend_with_fusion * candidate.final_score
-                )
-            else:
-                candidate.final_score = learned
             ranked.append(candidate)
         ranked.sort(key=lambda c: c.final_score, reverse=True)
         return ranked

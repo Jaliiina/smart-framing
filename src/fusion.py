@@ -21,6 +21,10 @@ class FusionModule:
         self.weight_subject: float = w.get("subject", 0.20)
         self.weight_technical: float = w.get("technical", 0.10)
         self.weight_area_prior: float = w.get("area_prior", 0.0)
+        self.weight_roi_discard: float = w.get("roi_discard", 0.0)
+        self.weight_semantic: float = w.get("semantic", 0.0)
+        self.weight_subjectness: float = w.get("subjectness", 0.0)
+        self.weight_artifact_avoidance: float = w.get("artifact_avoidance", 0.0)
 
         area_cfg = fcfg.get("area_prior", {})
         ideal_range = area_cfg.get("ideal_range", [0.25, 0.60])
@@ -67,6 +71,27 @@ class FusionModule:
         # This prevents bottom-texture (grass, ground) from hijacking the crop for sky scenes.
         self._saliency_vertical_bias_enabled: bool = fcfg.get("saliency_vertical_bias_enabled", True)
         self._saliency_vertical_bias_strength: float = fcfg.get("saliency_vertical_bias_strength", 0.12)
+        robust_cfg = fcfg.get("robust_rank_fusion", {})
+        self._robust_rank_enabled: bool = bool(robust_cfg.get("enabled", True))
+        self._robust_rank_blend: float = float(robust_cfg.get("blend", 0.35))
+        self._robust_rank_weights: Dict[str, float] = dict(
+            robust_cfg.get(
+                "weights",
+                {
+                    "aesthetic": 0.14,
+                    "composition": 0.18,
+                    "semantic": 0.16,
+                    "subjectness": 0.16,
+                    "roi_discard": 0.16,
+                    "area_prior": 0.08,
+                    "boundary_clean": 0.06,
+                    "artifact_clean": 0.06,
+                },
+            )
+        )
+        self._robust_rank_veto_strength: float = float(
+            robust_cfg.get("veto_strength", 0.28)
+        )
 
     def fuse(
         self,
@@ -76,6 +101,9 @@ class FusionModule:
         composition_scores: List[Tuple[float, Dict[str, float]]],
         subject_scores: List[Optional[float]],
         technical_scores: List[Tuple[float, Dict[str, float]]],
+        roi_discard_scores: Optional[List[Tuple[float, Dict[str, float]]]] = None,
+        semantic_scores: Optional[List[Tuple[float, Dict[str, float]]]] = None,
+        subjectness_scores: Optional[List[Tuple[float, float]]] = None,
         saliency_is_uniform: bool = False,
         has_subject: bool = True,
         image_shape: Optional[Tuple[int, int]] = None,
@@ -171,6 +199,10 @@ class FusionModule:
         w_subject = self.weight_subject
         w_technical = self.weight_technical
         w_area_prior = self.weight_area_prior
+        w_roi_discard = self.weight_roi_discard
+        w_semantic = self.weight_semantic
+        w_subjectness = self.weight_subjectness
+        w_artifact = self.weight_artifact_avoidance
 
         # Fallback: if saliency is uniform, reduce its weight
         if saliency_is_uniform:
@@ -193,6 +225,10 @@ class FusionModule:
             + w_subject
             + w_technical
             + w_area_prior
+            + w_roi_discard
+            + w_semantic
+            + w_subjectness
+            + w_artifact
         )
         if total_w > 0:
             w_aesthetic /= total_w
@@ -201,6 +237,10 @@ class FusionModule:
             w_subject /= total_w
             w_technical /= total_w
             w_area_prior /= total_w
+            w_roi_discard /= total_w
+            w_semantic /= total_w
+            w_subjectness /= total_w
+            w_artifact /= total_w
 
         # --- Normalize each score dimension per-image ---
         norm_aesthetic = minmax_normalize(np.array(aesthetic_scores, dtype=np.float64))
@@ -213,6 +253,26 @@ class FusionModule:
             [self._area_prior_score(b, image_shape) for b in bboxes],
             dtype=np.float64,
         )
+        if roi_discard_scores is None:
+            roi_discard_scores = [(0.0, {}) for _ in range(n)]
+        roi_totals = np.array([s[0] for s in roi_discard_scores], dtype=np.float64)
+        norm_roi_discard = minmax_normalize(roi_totals)
+        artifact_penalty = np.array(
+            [
+                s[1].get("visual_artifact_penalty", 0.0)
+                + 0.35 * s[1].get("distractor_penalty", 0.0)
+                for s in roi_discard_scores
+            ],
+            dtype=np.float64,
+        )
+        if semantic_scores is None:
+            semantic_scores = [(0.0, {}) for _ in range(n)]
+        semantic_totals = np.array([s[0] for s in semantic_scores], dtype=np.float64)
+        norm_semantic = minmax_normalize(semantic_totals)
+        if subjectness_scores is None:
+            subjectness_scores = [(0.0, 0.0) for _ in range(n)]
+        subjectness_totals = np.array([s[0] for s in subjectness_scores], dtype=np.float64)
+        norm_subjectness = minmax_normalize(subjectness_totals)
 
         # Subject scores: handle None
         subject_arr = np.array(
@@ -232,7 +292,38 @@ class FusionModule:
             + w_subject * norm_subject
             + w_technical * norm_technical
             + w_area_prior * area_prior
+            + w_roi_discard * norm_roi_discard
+            + w_semantic * norm_semantic
+            + w_subjectness * norm_subjectness
+            - w_artifact * artifact_penalty
         )
+
+        if self._robust_rank_enabled:
+            final_scores = self._apply_robust_rank_fusion(
+                base_scores=final_scores,
+                norm_aesthetic=norm_aesthetic,
+                norm_composition=norm_composition,
+                norm_semantic=norm_semantic,
+                norm_subjectness=norm_subjectness,
+                norm_roi_discard=norm_roi_discard,
+                area_prior=area_prior,
+                boundary_cut=np.array(
+                    [s[1].get("boundary_cut", 0.0) for s in roi_discard_scores],
+                    dtype=np.float64,
+                ),
+                artifact_penalty=artifact_penalty,
+                bad_discard=np.array(
+                    [s[1].get("bad_discard", 0.0) for s in roi_discard_scores],
+                    dtype=np.float64,
+                ),
+                negative_semantic=np.array(
+                    [
+                        s[1].get("negative_semantic", 0.0)
+                        for s in semantic_scores
+                    ],
+                    dtype=np.float64,
+                ),
+            )
 
         # Apply vertical bias, edge-adjacency and boundary penalties
         final_scores = final_scores + vertical_bias - edge_penalty - boundary_penalty
@@ -267,7 +358,29 @@ class FusionModule:
                 contrast=technical_scores[i][1].get("contrast", 0.0),
                 saturation=technical_scores[i][1].get("saturation", 0.0),
                 # Person & composition enhancement
-                person_completeness=composition_scores[i][1].get("person_completeness", 0.5)
+                person_completeness=composition_scores[i][1].get("person_completeness", 0.5),
+                roi_discard=float(norm_roi_discard[i]),
+                roi_saliency=roi_discard_scores[i][1].get("roi_saliency", 0.0),
+                discard_quality=roi_discard_scores[i][1].get("discard_quality", 0.0),
+                boundary_cut=roi_discard_scores[i][1].get("boundary_cut", 0.0),
+                distractor_penalty=roi_discard_scores[i][1].get("distractor_penalty", 0.0),
+                semantic_score=float(norm_semantic[i]),
+                positive_semantic=semantic_scores[i][1].get("positive_semantic", 0.0),
+                negative_semantic=semantic_scores[i][1].get("negative_semantic", 0.0),
+                subjectness=float(norm_subjectness[i]),
+                distractor_map_score=float(subjectness_scores[i][1]),
+                good_discard=roi_discard_scores[i][1].get("good_discard", 0.0),
+                bad_discard=roi_discard_scores[i][1].get("bad_discard", 0.0),
+                visual_artifact_penalty=roi_discard_scores[i][1].get(
+                    "visual_artifact_penalty", 0.0
+                ),
+                blank_area_penalty=roi_discard_scores[i][1].get("blank_area_penalty", 0.0),
+                saturated_boundary_penalty=roi_discard_scores[i][1].get(
+                    "saturated_boundary_penalty", 0.0
+                ),
+                small_saturated_object_penalty=roi_discard_scores[i][1].get(
+                    "small_saturated_object_penalty", 0.0
+                ),
             )
             candidates.append(
                 CandidateResult(
@@ -320,6 +433,64 @@ class FusionModule:
         h, w = image_shape[:2]
         img_area = max(1, h * w)
         return ((bbox[2] - bbox[0]) * (bbox[3] - bbox[1])) / img_area
+
+    def _apply_robust_rank_fusion(
+        self,
+        base_scores: np.ndarray,
+        norm_aesthetic: np.ndarray,
+        norm_composition: np.ndarray,
+        norm_semantic: np.ndarray,
+        norm_subjectness: np.ndarray,
+        norm_roi_discard: np.ndarray,
+        area_prior: np.ndarray,
+        boundary_cut: np.ndarray,
+        artifact_penalty: np.ndarray,
+        bad_discard: np.ndarray,
+        negative_semantic: np.ndarray,
+    ) -> np.ndarray:
+        """Blend weighted scores with rank aggregation and veto penalties.
+
+        This makes the selector less sensitive to one overconfident model. A
+        candidate should rank reasonably across composition, semantic intent,
+        subjectness, and ROI/discard, while high artifact/boundary/negative
+        evidence acts as a soft veto.
+        """
+        dimensions = {
+            "aesthetic": norm_aesthetic,
+            "composition": norm_composition,
+            "semantic": norm_semantic,
+            "subjectness": norm_subjectness,
+            "roi_discard": norm_roi_discard,
+            "area_prior": area_prior,
+            "boundary_clean": 1.0 - np.clip(boundary_cut, 0.0, 1.0),
+            "artifact_clean": 1.0 - np.clip(artifact_penalty, 0.0, 1.0),
+        }
+        total_weight = sum(
+            max(0.0, float(self._robust_rank_weights.get(name, 0.0)))
+            for name in dimensions
+        )
+        if total_weight <= 1e-9:
+            return base_scores
+
+        rank_score = np.zeros_like(base_scores, dtype=np.float64)
+        for name, values in dimensions.items():
+            weight = max(0.0, float(self._robust_rank_weights.get(name, 0.0)))
+            if weight <= 0:
+                continue
+            rank_score += weight * _rank_percentile(np.asarray(values, dtype=np.float64))
+        rank_score /= total_weight
+
+        veto = np.maximum.reduce(
+            [
+                minmax_normalize(np.clip(artifact_penalty, 0.0, 1.0)),
+                minmax_normalize(np.clip(boundary_cut, 0.0, 1.0)),
+                minmax_normalize(np.clip(bad_discard, 0.0, 1.0)),
+                minmax_normalize(np.clip(negative_semantic, 0.0, 1.0)),
+            ]
+        )
+        robust_score = rank_score - self._robust_rank_veto_strength * veto
+        blend = float(np.clip(self._robust_rank_blend, 0.0, 1.0))
+        return (1.0 - blend) * base_scores + blend * robust_score
 
     def _area_prior_score(
         self,
@@ -553,3 +724,22 @@ class FusionModule:
                 best_weights = weights
 
         return best_weights or {}
+
+
+def _rank_percentile(values: np.ndarray) -> np.ndarray:
+    """Return percentile ranks in [0, 1], where larger input is better."""
+    values = np.asarray(values, dtype=np.float64)
+    n = len(values)
+    if n == 0:
+        return values
+    if n == 1 or float(values.max() - values.min()) < 1e-12:
+        return np.full(n, 0.5, dtype=np.float64)
+    order = np.argsort(values, kind="mergesort")
+    ranks = np.empty(n, dtype=np.float64)
+    ranks[order] = np.arange(n, dtype=np.float64)
+    return ranks / max(1.0, float(n - 1))
+
+
+def _rank_data(values: np.ndarray) -> np.ndarray:
+    """Rank helper used by Spearman agreement; ties are handled stably."""
+    return _rank_percentile(values)

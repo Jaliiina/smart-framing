@@ -58,7 +58,10 @@ class AestheticCropper:
         from .fusion import FusionModule
         from .explanation import ExplanationGenerator
         from .reranker import LearnedReranker
-        from .crop_refiner import CropRefiner
+        from .roi_discard_scorer import RoiDiscardScorer
+        from .semantic_crop_scorer import SemanticCropScorer
+        from .scientific_optimizer import ScientificCropOptimizer
+        from .subjectness_scorer import SubjectnessScorer
 
         self.candidate_gen = CandidateGenerator(self.config)
         self.saliency_det = SaliencyDetector(self.config)
@@ -66,9 +69,14 @@ class AestheticCropper:
         self.subject_det = SubjectDetector(self.config)
         self.comp_scorer = CompositionScorer(self.config)
         self.tech_scorer = TechnicalQualityScorer(self.config)
+        self.semantic_crop_scorer = SemanticCropScorer(self.config)
+        self.subjectness_scorer = SubjectnessScorer(self.config)
+        self.roi_discard_scorer = RoiDiscardScorer(self.config)
         self.fusion = FusionModule(self.config)
         self.explainer = ExplanationGenerator(self.config)
-        self.crop_refiner = CropRefiner(self.config)
+        self.scientific_optimizer = ScientificCropOptimizer(
+            self.config, self.roi_discard_scorer, self.semantic_crop_scorer
+        )
         self.reranker = None
         reranker_cfg = self.config.get("reranker", {})
         if reranker_cfg.get("enabled", False):
@@ -194,6 +202,25 @@ class AestheticCropper:
         # 4e. Technical quality scores
         technical_scores = self.tech_scorer.score_candidates(image, candidates)
 
+        # 4f. Semantic subjectness and distractor-aware ROI/discard scores
+        subjectness_maps = self.subjectness_scorer.build_maps(
+            image=image,
+            saliency_map=saliency_map,
+            detected_objects=detected_objects,
+        )
+        subjectness_scores = self.subjectness_scorer.score_candidates(
+            candidates, subjectness_maps
+        )
+        semantic_scores = self.semantic_crop_scorer.score_candidates(image, candidates)
+        roi_discard_scores = self.roi_discard_scorer.score_candidates(
+            image=image,
+            bboxes=candidates,
+            saliency_map=saliency_map,
+            detected_objects=detected_objects,
+            subjectness_maps=subjectness_maps,
+            semantic_scores=semantic_scores,
+        )
+
         # --- Step 5: Fuse scores and select best ---
         best, top_k, all_ranked = self.fusion.fuse(
             bboxes=candidates,
@@ -202,6 +229,9 @@ class AestheticCropper:
             composition_scores=composition_scores,
             subject_scores=subject_scores,
             technical_scores=technical_scores,
+            roi_discard_scores=roi_discard_scores,
+            semantic_scores=semantic_scores,
+            subjectness_scores=subjectness_scores,
             saliency_is_uniform=is_uniform,
             has_subject=has_subject,
             image_shape=image.shape[:2],
@@ -219,18 +249,15 @@ class AestheticCropper:
             best = all_candidates[0]
             top_k = all_candidates[: self.fusion.top_k_display]
 
-        refined_best = self.crop_refiner.refine(
+        all_candidates = self.scientific_optimizer.optimize(
             image=image,
-            best=best,
             ranked=all_candidates if all_candidates else top_k,
             detected_objects=detected_objects,
             saliency_map=saliency_map,
+            subjectness_maps=subjectness_maps,
         )
-        if refined_best.bbox != best.bbox:
-            best = refined_best
-            top_k = [best] + [cand for cand in top_k if cand.bbox != best.bbox][
-                : max(0, self.fusion.top_k_display - 1)
-            ]
+        best = all_candidates[0]
+        top_k = all_candidates[: self.fusion.top_k_display]
 
         # --- Step 6: Generate explanation ---
         explanation = self.explainer.generate(best.sub_scores, has_subject)
@@ -335,6 +362,10 @@ class AestheticCropper:
             "subject": self.fusion.weight_subject,
             "technical": self.fusion.weight_technical,
             "area_prior": self.fusion.weight_area_prior,
+            "roi_discard": self.fusion.weight_roi_discard,
+            "semantic": self.fusion.weight_semantic,
+            "subjectness": self.fusion.weight_subjectness,
+            "artifact_avoidance": self.fusion.weight_artifact_avoidance,
         }
 
         for k, v in custom_weights.items():

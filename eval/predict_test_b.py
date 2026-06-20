@@ -105,6 +105,81 @@ def write_submission_csv(rows: list[dict], output_path: Path) -> None:
             )
 
 
+def candidate_score_dict(candidate) -> dict[str, float]:
+    sub = candidate.sub_scores
+    return {
+        "aesthetic": float(sub.aesthetic),
+        "saliency": float(sub.saliency),
+        "composition": float(sub.composition),
+        "subject": float(sub.subject),
+        "technical": float(sub.technical),
+        "roi_discard": float(sub.roi_discard),
+        "semantic": float(sub.semantic_score),
+        "subjectness": float(sub.subjectness),
+        "distractor": float(sub.distractor_map_score),
+        "good_discard": float(sub.good_discard),
+        "bad_discard": float(sub.bad_discard),
+        "artifact": float(sub.visual_artifact_penalty),
+        "boundary_clean": float(1.0 - sub.boundary_cut),
+    }
+
+
+def make_score_chart(top_candidates, output_path: Path) -> None:
+    labels = [
+        "aesthetic",
+        "saliency",
+        "composition",
+        "subject",
+        "technical",
+        "roi_discard",
+        "semantic",
+        "subjectness",
+        "distractor",
+        "good_discard",
+        "bad_discard",
+        "artifact",
+        "boundary_clean",
+    ]
+    width, row_h = 760, 30
+    height = 46 + len(top_candidates) * (len(labels) * row_h + 28)
+    canvas = np.full((height, width, 3), 255, dtype=np.uint8)
+    cv2.putText(
+        canvas,
+        "Top-3 candidate score decomposition",
+        (18, 28),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.75,
+        (20, 20, 20),
+        2,
+        cv2.LINE_AA,
+    )
+    y = 54
+    colors = [(50, 140, 240), (30, 180, 120), (180, 110, 230)]
+    for idx, cand in enumerate(top_candidates[:3]):
+        cv2.putText(
+            canvas,
+            f"#{idx + 1} score={cand.final_score:.3f} bbox={cand.bbox}",
+            (18, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (30, 30, 30),
+            1,
+            cv2.LINE_AA,
+        )
+        y += 20
+        scores = candidate_score_dict(cand)
+        for label in labels:
+            value = max(0.0, min(1.0, scores[label]))
+            cv2.putText(canvas, label, (26, y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (40, 40, 40), 1)
+            cv2.rectangle(canvas, (170, y + 5), (700, y + 22), (230, 230, 230), -1)
+            cv2.rectangle(canvas, (170, y + 5), (170 + int(530 * value), y + 22), colors[idx % 3], -1)
+            cv2.putText(canvas, f"{value:.2f}", (710, y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (40, 40, 40), 1)
+            y += row_h
+        y += 12
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(output_path), canvas)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Predict on test set B")
     parser.add_argument("--image-dir", type=str, required=True, help="Test set B image directory")
@@ -122,8 +197,10 @@ def main() -> None:
     out_dir = Path(args.output_dir)
     crop_dir = out_dir / "crops"
     vis_dir = out_dir / "visualizations"
+    score_dir = out_dir / "score_charts"
     crop_dir.mkdir(parents=True, exist_ok=True)
     vis_dir.mkdir(parents=True, exist_ok=True)
+    score_dir.mkdir(parents=True, exist_ok=True)
 
     img_dir = Path(args.image_dir)
     template = Path(args.template_csv) if args.template_csv else img_dir / "submit_teamnumber.csv"
@@ -153,6 +230,7 @@ def main() -> None:
             crop_path = crop_dir / f"{image_file.stem}_crop.jpg"
             save_image(vis, str(vis_path))
             save_image(result.best_crop, str(crop_path))
+            make_score_chart(result.top_candidates, score_dir / f"{image_file.stem}_scores.jpg")
             visual_paths.append(vis_path)
 
             record = {
@@ -167,7 +245,34 @@ def main() -> None:
                     "subject": round(float(result.best_sub_scores.subject), 6),
                     "technical": round(float(result.best_sub_scores.technical), 6),
                     "area_prior": round(float(result.best_sub_scores.area_prior), 6),
+                    "roi_discard": round(float(result.best_sub_scores.roi_discard), 6),
+                    "roi_saliency": round(float(result.best_sub_scores.roi_saliency), 6),
+                    "discard_quality": round(float(result.best_sub_scores.discard_quality), 6),
+                    "boundary_cut": round(float(result.best_sub_scores.boundary_cut), 6),
+                    "distractor_penalty": round(float(result.best_sub_scores.distractor_penalty), 6),
+                    "semantic_score": round(float(result.best_sub_scores.semantic_score), 6),
+                    "positive_semantic": round(float(result.best_sub_scores.positive_semantic), 6),
+                    "negative_semantic": round(float(result.best_sub_scores.negative_semantic), 6),
+                    "subjectness": round(float(result.best_sub_scores.subjectness), 6),
+                    "distractor_map_score": round(float(result.best_sub_scores.distractor_map_score), 6),
+                    "good_discard": round(float(result.best_sub_scores.good_discard), 6),
+                    "bad_discard": round(float(result.best_sub_scores.bad_discard), 6),
+                    "visual_artifact_penalty": round(float(result.best_sub_scores.visual_artifact_penalty), 6),
+                    "blank_area_penalty": round(float(result.best_sub_scores.blank_area_penalty), 6),
+                    "saturated_boundary_penalty": round(float(result.best_sub_scores.saturated_boundary_penalty), 6),
+                    "small_saturated_object_penalty": round(float(result.best_sub_scores.small_saturated_object_penalty), 6),
                 },
+                "top3": [
+                    {
+                        "bbox": [int(v) for v in cand.bbox],
+                        "score": round(float(cand.final_score), 6),
+                        "sub_scores": {
+                            key: round(value, 6)
+                            for key, value in candidate_score_dict(cand).items()
+                        },
+                    }
+                    for cand in result.top_candidates[:3]
+                ],
                 "explanation": result.explanation,
                 "time": round(elapsed, 2),
             }
@@ -233,6 +338,7 @@ def main() -> None:
     print(f"\nSubmission CSV saved to {submission_csv}")
     print(f"Detailed JSON saved to {predictions_json}")
     print(f"Visualizations saved to {vis_dir}")
+    print(f"Score charts saved to {score_dir}")
     print(f"Crops saved to {crop_dir}")
 
 

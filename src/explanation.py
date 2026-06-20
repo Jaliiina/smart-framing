@@ -41,6 +41,12 @@ class ExplanationGenerator:
         if sub_scores.composition >= 0.7:
             reasons.append("构图较平衡")
 
+        if sub_scores.roi_discard >= 0.65:
+            reasons.append("保留区域与舍弃区域区分清晰")
+
+        if sub_scores.boundary_cut <= 0.25 and sub_scores.roi_saliency >= 0.5:
+            reasons.append("边界未明显切断主体结构")
+
         if sub_scores.area_prior >= 0.7:
             reasons.append("取景范围适中")
 
@@ -70,6 +76,10 @@ class ExplanationGenerator:
             reasons.append("main subject is intact")
         if sub_scores.composition >= 0.7:
             reasons.append("composition is balanced")
+        if sub_scores.roi_discard >= 0.65:
+            reasons.append("ROI and discarded region are well separated")
+        if sub_scores.boundary_cut <= 0.25 and sub_scores.roi_saliency >= 0.5:
+            reasons.append("crop boundaries avoid cutting salient structure")
         if sub_scores.area_prior >= 0.7:
             reasons.append("framing size is appropriate")
         if sub_scores.sharpness >= 0.7 and sub_scores.brightness >= 0.7:

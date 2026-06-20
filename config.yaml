@@ -58,8 +58,12 @@ fusion:
     saliency: 0.04
     composition: 0.24
     subject: 0.22
-    technical: 0.08
-    area_prior: 0.12
+    technical: 0.07
+    area_prior: 0.09
+    roi_discard: 0.08
+    semantic: 0.12
+    subjectness: 0.12
+    artifact_avoidance: 0.10
   saliency_sigmoid_k: 5.0
   subject_sigmoid_k: 5.0
   area_prior:
@@ -80,19 +84,104 @@ fusion:
   stage1_filter:
     boundary_threshold: 0.30
     boundary_penalty_strength: 0.10
+  robust_rank_fusion:
+    enabled: true
+    blend: 0.35
+    veto_strength: 0.28
+    weights:
+      aesthetic: 0.14
+      composition: 0.18
+      semantic: 0.16
+      subjectness: 0.16
+      roi_discard: 0.16
+      area_prior: 0.08
+      boundary_clean: 0.06
+      artifact_clean: 0.06
 
 reranker:
-  enabled: true
-  model_path: "models/testa_ridge_reranker.json"
+  enabled: false
+  model_path: "models/scientific_ridge_reranker.json"
   blend_with_fusion: 0.0
   takeover_margin: 0.0
-  protect_high_quality_fusion: true
+  protect_high_quality_fusion: false
   protect_fusion_score_threshold: 0.80
   large_area_takeover_threshold: 0.50
 
 refiner:
-  enabled: true
+  enabled: false
   max_score_drop: 0.08
+
+roi_discard:
+  weight_roi_saliency: 0.35
+  weight_discard_quality: 0.25
+  weight_subject_integrity: 0.25
+  weight_boundary_clean: 0.15
+  weight_semantic: 0.15
+  weight_visual_artifact: 0.35
+  boundary_strip_ratio: 0.035
+  distractor_classes: [24, 26, 27, 28, 31, 32, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
+
+semantic_crop:
+  enabled: true
+  clip_model: "ViT-L/14"
+  context_top_k: 3
+  positive_aggregation: "context_mean"
+  negative_aggregation: "max"
+  positive_prompts:
+    - "beautiful landscape photograph"
+    - "beautiful seascape with waves"
+    - "airplane in the sky"
+    - "pencil tips and hand drawing"
+    - "complete building architecture"
+    - "ocean waves scenic view"
+    - "illuminated tree canopy"
+    - "symmetric road with trees"
+    - "complete glass object"
+    - "motorcycle scenic landscape"
+    - "well framed main subject"
+  negative_prompts:
+    - "trash or garbage"
+    - "plastic bag"
+    - "orange bucket or plastic barrel"
+    - "traffic cone or construction object"
+    - "cluttered random foreground"
+    - "dirty water or muddy ground"
+    - "rusty roof edge"
+    - "metal roof eaves and beams"
+    - "dark empty ground"
+    - "net rope foreground"
+    - "large blank white area"
+    - "large flat color area"
+    - "cropped cut off object"
+
+subjectness:
+  enabled: true
+  foreground_y_start: 0.55
+  corner_width: 0.28
+  saliency_weight: 0.45
+  structure_weight: 0.30
+  object_weight: 0.25
+  distractor_classes: [24, 26, 27, 28, 31, 32, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
+
+scientific_optimizer:
+  enabled: true
+  top_n: 20
+  max_variants_per_seed: 18
+  min_area_ratio: 0.18
+  max_area_ratio: 0.72
+  min_improvement: 0.015
+  weights:
+    fusion: 0.35
+    roi_discard: 0.25
+    subject: 0.16
+    composition: 0.14
+    boundary_clean: 0.10
+    semantic: 0.12
+    subjectness: 0.12
+    good_discard: 0.08
+    bad_discard: 0.12
+    distractor_avoidance: 0.16
+    visual_artifact: 0.14
 
 composition:
   weights:
