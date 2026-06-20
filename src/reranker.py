@@ -174,8 +174,6 @@ class LearnedReranker:
                 blend_with_fusion=blend,
                 takeover_margin=margin,
                 protect_high_quality_fusion=protect,
-                protect_fusion_score_threshold=score_threshold,
-                large_area_takeover_threshold=area_threshold,
             )
         return cls(
             coefficients=np.array(data["coefficients"], dtype=np.float64),
