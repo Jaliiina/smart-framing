@@ -57,6 +57,24 @@ class SubScores:
     # Person & composition enhancement
     person_completeness: float = 0.5
 
+    # ROI / discard-region modeling
+    roi_discard: float = 0.0
+    roi_saliency: float = 0.0
+    discard_quality: float = 0.0
+    boundary_cut: float = 0.0
+    distractor_penalty: float = 0.0
+    semantic_score: float = 0.0
+    positive_semantic: float = 0.0
+    negative_semantic: float = 0.0
+    subjectness: float = 0.0
+    distractor_map_score: float = 0.0
+    good_discard: float = 0.0
+    bad_discard: float = 0.0
+    visual_artifact_penalty: float = 0.0
+    blank_area_penalty: float = 0.0
+    saturated_boundary_penalty: float = 0.0
+    small_saturated_object_penalty: float = 0.0
+
 
 @dataclass
 class CandidateResult:

@@ -2,112 +2,90 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
 from .utils import SubScores
 
 
 class ExplanationGenerator:
-    """Generate human-readable explanations for why a crop was selected."""
+    """Generate short human-readable explanations for why a crop was selected."""
 
-    def __init__(self, config: dict = None):
-        """Initialize the explanation generator.
-
-        Args:
-            config: Optional configuration dict (reserved for future use).
-        """
-        pass
-
-    # Templates keyed by which scores are dominant
-    TEMPLATES = {
-        "saliency_high": "显著性主体保留完整",
-        "aesthetic_high": "美学评分较高",
-        "thirds_good": "主体中心接近三分线位置",
-        "subject_intact": "边界未明显切断主要目标",
-        "composition_good": "构图平衡合理",
-        "bright_sharp": "画面清晰明亮",
-        "saliency_low": "显著性保留一般",
-        "aesthetic_low": "美学评分中等",
-        "subject_cut": "部分主体被边界截断",
-    }
+    def __init__(self, config: dict | None = None):
+        self.config = config or {}
 
     def generate(
         self,
         sub_scores: SubScores,
         has_subject: bool = True,
     ) -> str:
-        """Generate a template-based explanation for the crop selection.
-
-        Args:
-            sub_scores: The winning candidate's sub-scores (normalized).
-            has_subject: Whether objects were detected.
-
-        Returns:
-            Explanation string (Chinese, 20-60 chars).
-        """
+        """Generate a Chinese explanation, roughly 20-60 characters."""
         reasons = []
 
-        # Check each dimension and add reasons
         if sub_scores.saliency >= 0.7:
-            reasons.append(self.TEMPLATES["saliency_high"])
+            reasons.append("显著主体保留较完整")
         elif sub_scores.saliency < 0.3:
-            reasons.append(self.TEMPLATES["saliency_low"])
+            reasons.append("显著性虽不突出但整体更均衡")
 
         if sub_scores.aesthetic >= 0.7:
-            reasons.append(self.TEMPLATES["aesthetic_high"])
+            reasons.append("美学评分较高")
         elif sub_scores.aesthetic < 0.3:
-            reasons.append(self.TEMPLATES["aesthetic_low"])
+            reasons.append("美学评分中等")
 
         if sub_scores.thirds >= 0.6:
-            reasons.append(self.TEMPLATES["thirds_good"])
+            reasons.append("主体位置接近三分线")
 
         if has_subject:
             if sub_scores.subject >= 0.7:
-                reasons.append(self.TEMPLATES["subject_intact"])
+                reasons.append("主要目标较完整")
             elif sub_scores.subject < 0.4:
-                reasons.append(self.TEMPLATES["subject_cut"])
+                reasons.append("主体完整性一般")
 
         if sub_scores.composition >= 0.7:
-            reasons.append(self.TEMPLATES["composition_good"])
+            reasons.append("构图较平衡")
+
+        if sub_scores.roi_discard >= 0.65:
+            reasons.append("保留区域与舍弃区域区分清晰")
+
+        if sub_scores.boundary_cut <= 0.25 and sub_scores.roi_saliency >= 0.5:
+            reasons.append("边界未明显切断主体结构")
 
         if sub_scores.area_prior >= 0.7:
-            reasons.append("crop area is more focused")
+            reasons.append("取景范围适中")
 
         if sub_scores.sharpness >= 0.7 and sub_scores.brightness >= 0.7:
-            reasons.append(self.TEMPLATES["bright_sharp"])
+            reasons.append("画面清晰明亮")
 
-        # Always include at least one reason
         if not reasons:
-            reasons.append(self.TEMPLATES["aesthetic_high"])
+            reasons.append("综合评分最好")
 
-        # Combine into explanation
-        explanation = "选择该区域是因为" + "，".join(reasons) + "。"
-        return explanation
+        return "选择该区域是因为" + "，".join(reasons[:3]) + "。"
 
     def generate_english(
         self,
         sub_scores: SubScores,
         has_subject: bool = True,
     ) -> str:
-        """Generate an English explanation (alternative output)."""
+        """Generate a short English explanation."""
         reasons = []
 
         if sub_scores.saliency >= 0.7:
-            reasons.append("salient subject well preserved")
+            reasons.append("salient content is preserved")
         if sub_scores.aesthetic >= 0.7:
-            reasons.append("high aesthetic quality")
+            reasons.append("aesthetic score is high")
         if sub_scores.thirds >= 0.6:
-            reasons.append("subject near rule-of-thirds position")
+            reasons.append("subject is near a rule-of-thirds line")
         if has_subject and sub_scores.subject >= 0.7:
-            reasons.append("main subject intact")
+            reasons.append("main subject is intact")
         if sub_scores.composition >= 0.7:
-            reasons.append("balanced composition")
+            reasons.append("composition is balanced")
+        if sub_scores.roi_discard >= 0.65:
+            reasons.append("ROI and discarded region are well separated")
+        if sub_scores.boundary_cut <= 0.25 and sub_scores.roi_saliency >= 0.5:
+            reasons.append("crop boundaries avoid cutting salient structure")
         if sub_scores.area_prior >= 0.7:
-            reasons.append("compact framing")
+            reasons.append("framing size is appropriate")
         if sub_scores.sharpness >= 0.7 and sub_scores.brightness >= 0.7:
-            reasons.append("clear and well-lit")
+            reasons.append("image is clear and well-lit")
 
         if not reasons:
-            reasons.append("best overall score")
+            reasons.append("it has the best overall score")
 
-        return "Selected because: " + ", ".join(reasons) + "."
+        return "Selected because " + ", ".join(reasons[:3]) + "."

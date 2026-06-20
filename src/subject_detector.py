@@ -63,12 +63,34 @@ class SubjectDetector:
         scfg = config.get("subject", {})
         self.min_important_inclusion: float = scfg.get("min_important_inclusion", 0.80)
         self.tightness_weight: float = scfg.get("tightness_weight", 0.25)
+        self.fallback_min_area_ratio: float = scfg.get("fallback_min_area_ratio", 0.04)
+        self.fallback_allowed_classes = set(
+            scfg.get(
+                "fallback_allowed_classes",
+                [
+                    0, 1, 2, 3, 5, 7, 9,
+                    15, 16, 17, 18, 19, 20, 21, 22, 23,
+                    39, 40, 41,
+                ],
+            )
+        )
+        self.distractor_classes = set(
+            scfg.get(
+                "distractor_classes",
+                [
+                    24, 26, 27, 28, 31, 32,
+                    44, 46, 47, 48, 49, 50, 51, 52, 53, 54,
+                ],
+            )
+        )
+        self.avoid_distractors: bool = scfg.get("avoid_distractors", True)
         # Discard tiny detections that are almost certainly false positives
         # (e.g. YOLO often mis-classifies grass/rocks as giraffes ~20px tall).
         self.min_object_size: int = scfg.get("min_object_size_px", 25)
 
         self._model = None
         self._model_loaded = False
+        self.last_score_mode = "none"
 
     def _load_model(self):
         """Lazily load YOLOv8 model."""
@@ -246,6 +268,7 @@ class SubjectDetector:
         Strictly enforce min_important_inclusion threshold for person/wine glass core subjects
         """
         if len(detected_objects) == 0:
+            self.last_score_mode = "none"
             return [None] * len(bboxes)
 
         # Filter to important objects only, exclude face fallback proxies
@@ -259,12 +282,20 @@ class SubjectDetector:
             important_objects = [
                 obj
                 for obj in detected_objects
-                if obj.confidence >= 0.4 and obj.class_name != "face_person_proxy"
+                if self._is_fallback_subject(obj, image_shape)
             ]
 
         if len(important_objects) == 0:
+            distractor_scores = self._score_distractor_avoidance(
+                bboxes, detected_objects, image_shape
+            )
+            if distractor_scores is not None:
+                self.last_score_mode = "distractor"
+                return distractor_scores
+            self.last_score_mode = "none"
             return [None] * len(bboxes)
 
+        self.last_score_mode = "subject"
         img_h, img_w = image_shape[:2]
         img_area = img_h * img_w
         obj_weights = []
@@ -310,3 +341,68 @@ class SubjectDetector:
 
         # Critical Fix: delete max normalization, retain raw 0~1 score gap of completeness
         return per_candidate_scores
+
+    def _score_distractor_avoidance(
+        self,
+        bboxes: List[BBox],
+        detected_objects: List[DetectedObject],
+        image_shape: Tuple[int, int],
+    ) -> Optional[List[float]]:
+        if not self.avoid_distractors:
+            return None
+
+        img_h, img_w = image_shape[:2]
+        img_area = max(1, img_h * img_w)
+        distractors = []
+        for obj in detected_objects:
+            area_ratio = bbox_area(obj.bbox) / img_area
+            if obj.class_id in self.distractor_classes and area_ratio < 0.12:
+                distractors.append(obj)
+
+        if not distractors:
+            return None
+
+        scores = []
+        for bbox in bboxes:
+            penalty = 0.0
+            for obj in distractors:
+                obj_area = max(1, bbox_area(obj.bbox))
+                inclusion = bbox_intersection(bbox, obj.bbox) / obj_area
+                if inclusion <= 0.02:
+                    continue
+
+                _, cy = bbox_center(obj.bbox)
+                lower_frame_boost = 1.8 if cy > img_h * 0.55 else 1.0
+                cut_boost = 4.0 if 0.05 < inclusion < 0.95 else 1.0
+                penalty = max(
+                    penalty,
+                    obj.confidence * inclusion * lower_frame_boost * cut_boost,
+                )
+
+            scores.append(float(max(0.0, 1.0 - min(1.0, penalty))))
+        return scores
+
+    def _is_fallback_subject(
+        self,
+        obj: DetectedObject,
+        image_shape: Tuple[int, int],
+    ) -> bool:
+        """Decide whether a non-core detection may act as the main subject.
+
+        Small food/sports/foreground objects are often accidental distractors in
+        TestB. They should not force the crop to include them unless configured
+        as important classes.
+        """
+        if obj.class_name == "face_person_proxy" or obj.confidence < 0.4:
+            return False
+
+        img_h, img_w = image_shape[:2]
+        area_ratio = bbox_area(obj.bbox) / max(1, img_h * img_w)
+
+        if obj.class_id in self.distractor_classes and area_ratio < 0.08:
+            return False
+
+        if obj.class_id in self.fallback_allowed_classes:
+            return area_ratio >= self.fallback_min_area_ratio or obj.confidence >= 0.65
+
+        return area_ratio >= max(0.08, self.fallback_min_area_ratio)

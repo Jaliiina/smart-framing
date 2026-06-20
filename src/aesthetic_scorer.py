@@ -56,6 +56,9 @@ class AestheticScorer:
         self.use_clip_prompt_fallback: bool = acfg.get(
             "use_clip_prompt_fallback", True
         )
+        self.clip_prompt_blend_weight: float = float(
+            acfg.get("clip_prompt_blend_weight", 0.0)
+        )
         self.positive_prompts: List[str] = acfg.get(
             "positive_prompts",
             [
@@ -105,23 +108,15 @@ class AestheticScorer:
                         self._aesthetic_head.load_state_dict(state)
                     self._aesthetic_head.eval()
                     logger.info(f"Aesthetic predictor loaded from {self.model_path}")
+                    if self.use_clip_prompt_fallback and self.clip_prompt_blend_weight > 0:
+                        self._load_prompt_features(clip)
                 else:
                     logger.warning(
                         f"Aesthetic weights not found at {self.model_path}. "
                         "Falling back to CLIP prompt-based scoring."
                     )
                     if self.use_clip_prompt_fallback and self._clip_model is not None:
-                        positive_tokens = clip.tokenize(self.positive_prompts).to(self.device)
-                        negative_tokens = clip.tokenize(self.negative_prompts).to(self.device)
-                        with torch.no_grad():
-                            positive = self._clip_model.encode_text(positive_tokens).float()
-                            negative = self._clip_model.encode_text(negative_tokens).float()
-                        self._positive_text_features = positive / positive.norm(
-                            dim=-1, keepdim=True
-                        )
-                        self._negative_text_features = negative / negative.norm(
-                            dim=-1, keepdim=True
-                        )
+                        self._load_prompt_features(clip)
                         logger.info("Using CLIP prompt-based aesthetic fallback.")
             # Branch 2: LAION disabled — use CLIP prompts or hand-crafted fallback
             elif self._clip_model is not None and self.use_clip_prompt_fallback:
@@ -147,6 +142,16 @@ class AestheticScorer:
             logger.warning(f"Failed to load aesthetic predictor: {e}. Using fallback.")
         self._model_loaded = True
 
+    def _load_prompt_features(self, clip_module) -> None:
+        """Encode positive/negative text prompts for CLIP prompt scoring."""
+        positive_tokens = clip_module.tokenize(self.positive_prompts).to(self.device)
+        negative_tokens = clip_module.tokenize(self.negative_prompts).to(self.device)
+        with torch.no_grad():
+            positive = self._clip_model.encode_text(positive_tokens).float()
+            negative = self._clip_model.encode_text(negative_tokens).float()
+        self._positive_text_features = positive / positive.norm(dim=-1, keepdim=True)
+        self._negative_text_features = negative / negative.norm(dim=-1, keepdim=True)
+
     def score_candidates(
         self,
         image: np.ndarray,
@@ -169,7 +174,7 @@ class AestheticScorer:
             return [0.5] * len(bboxes)
 
     def _score_clip(self, image: np.ndarray, bboxes: List[BBox]) -> List[float]:
-        """Score using CLIP + aesthetic head, with batch chunking."""
+        """Score using CLIP + aesthetic head, optionally blended with prompts."""
         from PIL import Image
 
         crops = []
@@ -190,10 +195,44 @@ class AestheticScorer:
             chunk = torch.stack(crops[i:i + chunk_size]).to(self.device)
             with torch.no_grad():
                 features = self._clip_model.encode_image(chunk).float()
-                scores = self._aesthetic_head(features).squeeze(-1).cpu().numpy()
+                laion_scores = self._aesthetic_head(features).squeeze(-1)
+                if (
+                    self.clip_prompt_blend_weight > 0
+                    and self._positive_text_features is not None
+                    and self._negative_text_features is not None
+                ):
+                    norm_features = features / features.norm(dim=-1, keepdim=True)
+                    positive = norm_features @ self._positive_text_features.T
+                    negative = norm_features @ self._negative_text_features.T
+                    prompt_scores = positive.mean(dim=1) - negative.mean(dim=1)
+                    scores = self._blend_score_tensors(
+                        laion_scores,
+                        prompt_scores,
+                        self.clip_prompt_blend_weight,
+                    ).cpu().numpy()
+                else:
+                    scores = laion_scores.cpu().numpy()
             all_scores.extend([float(s) for s in scores])
 
         return all_scores
+
+    @staticmethod
+    def _blend_score_tensors(
+        primary: torch.Tensor,
+        secondary: torch.Tensor,
+        secondary_weight: float,
+    ) -> torch.Tensor:
+        """Min-max normalize two score vectors inside a batch before blending."""
+        weight = min(1.0, max(0.0, float(secondary_weight)))
+
+        def norm(values: torch.Tensor) -> torch.Tensor:
+            min_v = values.min()
+            max_v = values.max()
+            if float(max_v - min_v) < 1e-9:
+                return torch.full_like(values, 0.5)
+            return (values - min_v) / (max_v - min_v)
+
+        return (1.0 - weight) * norm(primary) + weight * norm(secondary)
 
     def _score_clip_prompts(
         self, image: np.ndarray, bboxes: List[BBox]

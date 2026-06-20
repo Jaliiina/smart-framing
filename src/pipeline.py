@@ -57,6 +57,11 @@ class AestheticCropper:
         from .technical_quality import TechnicalQualityScorer
         from .fusion import FusionModule
         from .explanation import ExplanationGenerator
+        from .reranker import LearnedReranker
+        from .roi_discard_scorer import RoiDiscardScorer
+        from .semantic_crop_scorer import SemanticCropScorer
+        from .scientific_optimizer import ScientificCropOptimizer
+        from .subjectness_scorer import SubjectnessScorer
 
         self.candidate_gen = CandidateGenerator(self.config)
         self.saliency_det = SaliencyDetector(self.config)
@@ -64,23 +69,60 @@ class AestheticCropper:
         self.subject_det = SubjectDetector(self.config)
         self.comp_scorer = CompositionScorer(self.config)
         self.tech_scorer = TechnicalQualityScorer(self.config)
+        self.semantic_crop_scorer = SemanticCropScorer(self.config)
+        self.subjectness_scorer = SubjectnessScorer(self.config)
+        self.roi_discard_scorer = RoiDiscardScorer(self.config)
         self.fusion = FusionModule(self.config)
         self.explainer = ExplanationGenerator(self.config)
+        self.scientific_optimizer = ScientificCropOptimizer(
+            self.config, self.roi_discard_scorer, self.semantic_crop_scorer
+        )
+        self.reranker = None
+        reranker_cfg = self.config.get("reranker", {})
+        if reranker_cfg.get("enabled", False):
+            model_path = reranker_cfg.get("model_path", "models/testa_reranker.json")
+            try:
+                self.reranker = LearnedReranker.from_file(
+                    model_path,
+                    blend_with_fusion=reranker_cfg.get("blend_with_fusion", 0.0),
+                    takeover_margin=reranker_cfg.get("takeover_margin", 0.04),
+                    protect_high_quality_fusion=reranker_cfg.get(
+                        "protect_high_quality_fusion", True
+                    ),
+                    protect_fusion_score_threshold=reranker_cfg.get(
+                        "protect_fusion_score_threshold", 0.80
+                    ),
+                    large_area_takeover_threshold=reranker_cfg.get(
+                        "large_area_takeover_threshold", 0.50
+                    ),
+                )
+                logger.info(f"Learned reranker loaded from {model_path}")
+            except Exception as exc:
+                logger.warning(f"Failed to load learned reranker: {exc}")
 
         # Print model info
         u2net_cfg = self.config.get("models", {}).get("u2net", {})
         yolo_cfg = self.config.get("models", {}).get("yolo", {})
+        aesthetic_cfg = self.config.get("models", {}).get("aesthetic", {})
         u2net_path = u2net_cfg.get("weights_path" if not u2net_cfg.get("use_lite", False) else "lite_weights_path", "models/u2netp.pth")
         u2net_name = "U2Net" if not u2net_cfg.get("use_lite", False) else "U2NetP (lite)"
         yolo_model = yolo_cfg.get("model_name", "yolov8n.pt")
         yolo_conf = yolo_cfg.get("confidence_threshold", 0.3)
-        aesthetic_device = self.config.get("aesthetic", {}).get("device", "cuda")
+        aesthetic_device = aesthetic_cfg.get("device", "cuda")
         u2net_device = u2net_cfg.get("device", "cuda")
         yolo_device = yolo_cfg.get("device", "cuda")
+        aesthetic_path = aesthetic_cfg.get("model_path", "models/aesthetic_predictor.pth")
+        clip_model = aesthetic_cfg.get("clip_model", "ViT-L/14")
+        if aesthetic_cfg.get("use_laion_predictor", False):
+            aesthetic_name = f"LAION aesthetic predictor ({clip_model}) [{aesthetic_path}]"
+        elif aesthetic_cfg.get("use_clip_prompt_fallback", False):
+            aesthetic_name = f"CLIP prompt scoring ({clip_model})"
+        else:
+            aesthetic_name = "hand-crafted fallback features"
         print(
             f"[Model Info] saliency={u2net_name} [{u2net_path}]; "
             f"subject={yolo_model} (conf={yolo_conf}); "
-            f"aesthetic=CLIP zero-shot prompts (ViT-L/14) [{self.aesthetic_scorer.model_path if hasattr(self.aesthetic_scorer, 'model_path') else 'models/aesthetic_predictor.pth'}]; "
+            f"aesthetic={aesthetic_name}; "
             f"u2net_device={u2net_device}, yolo_device={yolo_device}, aesthetic_device={aesthetic_device}"
         )
 
@@ -113,7 +155,7 @@ class AestheticCropper:
         )
 
         # --- Step 2: Run YOLOv8 once → detected objects ---
-        detected_objects = self.subject_det.detect(image)
+        detected_objects = self.subject_det.detect(image, saliency_map=saliency_map)
         has_subject = len(detected_objects) > 0
 
         # --- Step 3: Generate candidates (grid + saliency-guided) ---
@@ -155,9 +197,29 @@ class AestheticCropper:
             candidates, detected_objects, image.shape
         )
         has_subject = any(score is not None for score in subject_scores)
+        subject_score_mode = getattr(self.subject_det, "last_score_mode", "subject")
 
         # 4e. Technical quality scores
         technical_scores = self.tech_scorer.score_candidates(image, candidates)
+
+        # 4f. Semantic subjectness and distractor-aware ROI/discard scores
+        subjectness_maps = self.subjectness_scorer.build_maps(
+            image=image,
+            saliency_map=saliency_map,
+            detected_objects=detected_objects,
+        )
+        subjectness_scores = self.subjectness_scorer.score_candidates(
+            candidates, subjectness_maps
+        )
+        semantic_scores = self.semantic_crop_scorer.score_candidates(image, candidates)
+        roi_discard_scores = self.roi_discard_scorer.score_candidates(
+            image=image,
+            bboxes=candidates,
+            saliency_map=saliency_map,
+            detected_objects=detected_objects,
+            subjectness_maps=subjectness_maps,
+            semantic_scores=semantic_scores,
+        )
 
         # --- Step 5: Fuse scores and select best ---
         best, top_k, all_ranked = self.fusion.fuse(
@@ -167,16 +229,35 @@ class AestheticCropper:
             composition_scores=composition_scores,
             subject_scores=subject_scores,
             technical_scores=technical_scores,
+            roi_discard_scores=roi_discard_scores,
+            semantic_scores=semantic_scores,
+            subjectness_scores=subjectness_scores,
             saliency_is_uniform=is_uniform,
             has_subject=has_subject,
             image_shape=image.shape[:2],
             saliency_map=saliency_map,
             return_all=True,  # Get all ranked candidates for evaluation
+            subject_source=subject_score_mode,
             dual_saliency_scores=dual_saliency_scores,
         )
         
         # Use all_ranked if available, otherwise fall back to candidates
         all_candidates = all_ranked if all_ranked else candidates
+
+        if self.reranker is not None and all_ranked:
+            all_candidates = self.reranker.rerank(all_ranked, image.shape[:2])
+            best = all_candidates[0]
+            top_k = all_candidates[: self.fusion.top_k_display]
+
+        all_candidates = self.scientific_optimizer.optimize(
+            image=image,
+            ranked=all_candidates if all_candidates else top_k,
+            detected_objects=detected_objects,
+            saliency_map=saliency_map,
+            subjectness_maps=subjectness_maps,
+        )
+        best = all_candidates[0]
+        top_k = all_candidates[: self.fusion.top_k_display]
 
         # --- Step 6: Generate explanation ---
         explanation = self.explainer.generate(best.sub_scores, has_subject)
@@ -281,6 +362,10 @@ class AestheticCropper:
             "subject": self.fusion.weight_subject,
             "technical": self.fusion.weight_technical,
             "area_prior": self.fusion.weight_area_prior,
+            "roi_discard": self.fusion.weight_roi_discard,
+            "semantic": self.fusion.weight_semantic,
+            "subjectness": self.fusion.weight_subjectness,
+            "artifact_avoidance": self.fusion.weight_artifact_avoidance,
         }
 
         for k, v in custom_weights.items():
