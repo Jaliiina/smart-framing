@@ -17,7 +17,6 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             min-height: 100vh;
             padding: 24px;
-            /* 蓝色系背景：抽象渐变 + 极淡纹理 */
             background-image:
                 url('http://localhost:5000/static/2.jpg'),
                 linear-gradient(145deg,
@@ -36,8 +35,6 @@
             color: #1e2f3a;
         }
 
-        
-
         .container {
             max-width: 1400px;
             width: 100%;
@@ -46,7 +43,7 @@
             z-index: 1;
         }
 
-        /* ---------- 毛玻璃卡片 (增强玻璃质感) ---------- */
+        /* ---------- 毛玻璃卡片 ---------- */
         .glass-card {
             background: rgba(255, 255, 255, 0.25);
             backdrop-filter: blur(20px) saturate(1.4);
@@ -132,7 +129,7 @@
             font-weight: 600;
         }
 
-        /* ---------- 权重面板 (紧凑布局) ---------- */
+        /* ---------- 权重面板 ---------- */
         .weights-panel {
             display: flex;
             flex-wrap: wrap;
@@ -206,7 +203,7 @@
             font-variant-numeric: tabular-nums;
         }
 
-        /* ---------- 按钮 (蓝色系) ---------- */
+        /* ---------- 按钮 ---------- */
         .btn {
             display: inline-flex;
             align-items: center;
@@ -316,7 +313,7 @@
             opacity: 0.45;
         }
 
-        /* ---------- 结果展示 (限制图片尺寸) ---------- */
+        /* ---------- 结果展示 (单图) ---------- */
         .result-grid {
             display: flex;
             flex-wrap: wrap;
@@ -359,7 +356,7 @@
             background: rgba(255, 255, 255, 0.12);
         }
 
-        /* ---------- 子分数条形图 (蓝色系) ---------- */
+        /* ---------- 子分数条形图 ---------- */
         .subscore-bars {
             margin-top: 12px;
             display: flex;
@@ -437,7 +434,7 @@
             width: 100%;
             height: auto;
             max-height: 120px;
-            object-fit: cover;
+            object-fit: contain;
             border-radius: 8px;
             border: 1px solid rgba(255, 255, 255, 0.15);
         }
@@ -449,51 +446,118 @@
             opacity: 0.8;
         }
 
-        /* ---------- 批量结果列表 ---------- */
-        .batch-result-item {
+        /* ========== 批量结果卡片样式（缩略图放大至两倍） ========== */
+        .batch-result-card {
             display: flex;
             flex-wrap: wrap;
-            justify-content: space-between;
             align-items: center;
-            padding: 10px 16px;
-            border-bottom: 1px solid rgba(120, 160, 185, 0.12);
-            gap: 8px;
-            transition: background 0.15s;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.08);
+            gap: 24px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+            background: rgba(255, 255, 255, 0.10);
             backdrop-filter: blur(4px);
             -webkit-backdrop-filter: blur(4px);
-            margin-bottom: 4px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: background 0.2s, transform 0.15s;
+        }
+        .batch-result-card:hover {
+            background: rgba(255, 255, 255, 0.20);
+            transform: scale(1.002);
         }
 
-        .batch-result-item:hover {
-            background: rgba(255, 255, 255, 0.18);
+        .batch-thumbs {
+            display: flex;
+            gap: 18px;
+            flex-shrink: 0;
+            align-items: flex-start;
         }
 
-        .batch-result-item .file-info {
+        .batch-thumb-wrapper {
+            text-align: center;
+            width: 320px;              /* ← 桌面端：从 160px 翻倍到 320px */
+        }
+        .batch-thumb-wrapper img {
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(0, 0, 0, 0.05);
+            display: block;
+        }
+        .batch-thumb-wrapper .label {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-top: 4px;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+        }
+
+        .batch-info {
+            flex: 1;
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .batch-info .top-row {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 10px;
-            font-size: 14px;
+            gap: 8px 16px;
         }
-
-        .batch-result-item .file-info strong {
+        .batch-info .top-row .fname {
             font-weight: 600;
+            font-size: 15px;
+        }
+        .batch-info .top-row .bbox {
+            opacity: 0.5;
+            font-size: 13px;
+        }
+        .batch-info .top-row .score {
+            font-weight: 600;
+            color: #4a6a7a;
+            font-size: 15px;
         }
 
-        .batch-result-item .actions {
+        .batch-subscore-compact {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 16px;
+            font-size: 13px;
+            opacity: 0.85;
+            padding-top: 2px;
+        }
+        .batch-subscore-compact .item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .batch-subscore-compact .item .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #7fa5b9;
+            opacity: 0.5;
+        }
+        .batch-subscore-compact .item .val {
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .batch-actions {
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
+            flex-shrink: 0;
+        }
+        .batch-actions .btn {
+            padding: 6px 16px;
+            font-size: 13px;
         }
 
-        .batch-result-item .actions .btn {
-            padding: 5px 12px;
-            font-size: 12px;
-        }
-
-        /* ---------- 历史记录 (玻璃质感) ---------- */
+        /* ---------- 历史记录 ---------- */
         .history-list {
             display: flex;
             flex-direction: column;
@@ -576,14 +640,10 @@
         }
 
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
-        .hidden {
-            display: none !important;
-        }
+        .hidden { display: none !important; }
 
         .status-badge {
             font-size: 13px;
@@ -632,14 +692,8 @@
         }
 
         @keyframes modalFadeIn {
-            from {
-                opacity: 0;
-                transform: scale(0.96) translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1) translateY(0);
-            }
+            from { opacity: 0; transform: scale(0.96) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
         }
 
         .modal-close {
@@ -704,30 +758,22 @@
             gap: 16px;
             align-items: center;
         }
-        .gap-sm {
-            gap: 10px;
-        }
-        .mt-12 {
-            margin-top: 12px;
-        }
-        .mt-16 {
-            margin-top: 16px;
-        }
-        .mb-8 {
-            margin-bottom: 8px;
-        }
-        .text-muted {
-            opacity: 0.65;
-            font-weight: 400;
-        }
-        .text-center {
-            text-align: center;
-        }
-        .w-full {
-            width: 100%;
+        .gap-sm { gap: 10px; }
+        .mt-12 { margin-top: 12px; }
+        .mt-16 { margin-top: 16px; }
+        .mb-8 { margin-bottom: 8px; }
+        .text-muted { opacity: 0.65; font-weight: 400; }
+        .text-center { text-align: center; }
+        .w-full { width: 100%; }
+
+        /* ---------- 响应式适配 ---------- */
+        @media (max-width: 1024px) {
+            /* 大平板/小笔记本上适当缩小，但仍比原来大 */
+            .batch-thumb-wrapper {
+                width: 240px;
+            }
         }
 
-        /* ---------- 响应式 ---------- */
         @media (max-width: 768px) {
             body {
                 padding: 14px;
@@ -774,16 +820,23 @@
                 width: 100%;
                 justify-content: center;
             }
-            .batch-result-item {
+            .batch-result-card {
                 flex-direction: column;
                 align-items: stretch;
-                gap: 6px;
+                gap: 14px;
             }
-            .batch-result-item .actions {
-                justify-content: flex-start;
+            .batch-thumbs {
+                justify-content: center;
+            }
+            .batch-actions {
+                justify-content: center;
             }
             .history-item {
                 flex-wrap: wrap;
+            }
+            /* 平板端尺寸：从 130px 增加到 200px */
+            .batch-thumb-wrapper {
+                width: 200px;
             }
         }
 
@@ -807,6 +860,10 @@
             .result-card img {
                 max-height: 180px;
             }
+            /* 手机端尺寸：从 100px 增加到 150px */
+            .batch-thumb-wrapper {
+                width: 150px;
+            }
         }
     </style>
 </head>
@@ -826,7 +883,7 @@
             </p>
         </div>
 
-        <!-- ======== 权重调节面板 (紧凑) ======== -->
+        <!-- ======== 权重调节面板 ======== -->
         <div class="glass-card">
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:4px;">
                 <h2 style="margin-bottom:0;"><span class="deco"></span> 融合权重</h2>
@@ -900,7 +957,7 @@
         // ============================================================
         let currentWeights = {};
         let batchProcessedData = [];
-        let history = []; // { type: 'single'|'batch', filename, data, timestamp }
+        let history = [];
 
         const DEFAULT_WEIGHTS = {
             aesthetic: 0.25,
@@ -910,23 +967,12 @@
             technical: 0.12,
             area_prior: 0.00
         };
-
         const MAX_HISTORY = 20;
 
         // ============================================================
         //  工具函数
         // ============================================================
         function $(id) { return document.getElementById(id); }
-
-        function showError(containerId, message) {
-            const container = $(containerId);
-            if (!container) return;
-            const div = document.createElement('div');
-            div.className = 'error';
-            div.textContent = '❌ ' + message;
-            container.prepend(div);
-            setTimeout(() => div.remove(), 5000);
-        }
 
         function clearContainer(containerId) {
             const el = $(containerId);
@@ -1018,7 +1064,7 @@
         }
 
         // ============================================================
-        //  子分数条形图
+        //  子分数条形图（单图用）
         // ============================================================
         function renderSubScoreBars(subScores) {
             if (!subScores) return '';
@@ -1204,61 +1250,87 @@
             }
         }
 
+        // ============================================================
+        //  批量结果渲染（功能不变，仅样式尺寸已在上方放大）
+        // ============================================================
         function renderBatchResults(results) {
             const container = $('batchResult');
             if (!results || !results.length) {
                 container.innerHTML = '<p style="opacity:0.4;text-align:center;padding:20px;">暂无结果</p>';
                 return;
             }
-            let html = `<div style="margin-bottom:10px;font-weight:500;">共 ${results.length} 张</div><div>`;
+
+            const subLabels = {
+                aesthetic: '美学',
+                saliency: '显著性',
+                composition: '构图',
+                subject: '主体',
+                technical: '技术',
+                area_prior: '面积'
+            };
+            const subKeys = ['aesthetic', 'saliency', 'composition', 'subject', 'technical', 'area_prior'];
+
+            let html = `<div style="margin-bottom:12px;font-weight:500;opacity:0.7;">共 ${results.length} 张</div>`;
+
             results.forEach((item, idx) => {
                 if (item.error) {
                     html += `
-                        <div class="batch-result-item">
-                            <div class="file-info"><strong>${item.filename || '未命名'}</strong> <span class="error" style="font-size:13px;padding:2px 10px;">错误: ${item.error}</span></div>
+                        <div class="batch-result-card" style="border-left:4px solid #b35a4a;">
+                            <div style="flex:1;"><strong>${item.filename || '未命名'}</strong> <span class="error" style="font-size:13px;padding:2px 10px;">错误: ${item.error}</span></div>
                         </div>
                     `;
-                } else {
-                    html += `
-                        <div class="batch-result-item">
-                            <div class="file-info">
-                                <strong>${item.filename || '未命名'}</strong>
-                                <span style="opacity:0.5;font-size:13px;">框: [${(item.bbox||[]).join(', ')}]</span>
-                                <span style="font-weight:500;color:#4a6a7a;">得分: ${formatNum(item.score)}</span>
-                            </div>
-                            <div class="actions">
-                                <button class="btn btn-secondary view-detail-btn" data-idx="${idx}" style="padding:4px 12px;font-size:12px;">👁 详情</button>
-                                <button class="btn btn-secondary download-crop-btn" data-idx="${idx}" style="padding:4px 12px;font-size:12px;">⬇ 裁剪</button>
-                            </div>
-                        </div>
-                    `;
+                    return;
                 }
+
+                let subHtml = '';
+                if (item.sub_scores && typeof item.sub_scores === 'object') {
+                    const parts = [];
+                    subKeys.forEach(key => {
+                        const val = item.sub_scores[key];
+                        if (val !== undefined && val !== null) {
+                            const pct = (val * 100).toFixed(0);
+                            parts.push(`<span class="item"><span class="dot"></span>${subLabels[key]||key}: <span class="val">${pct}%</span></span>`);
+                        }
+                    });
+                    if (parts.length) {
+                        subHtml = `<div class="batch-subscore-compact">${parts.join('')}</div>`;
+                    }
+                }
+
+                const origImg = item.original_image || '';
+                const cropImg = item.crop_image || '';
+
+                html += `
+                    <div class="batch-result-card">
+                        <div class="batch-thumbs">
+                            <div class="batch-thumb-wrapper">
+                                <img src="${origImg}" alt="原图" loading="lazy" onerror="this.style.display='none'">
+                                <div class="label">📷 原图</div>
+                            </div>
+                            <div class="batch-thumb-wrapper">
+                                <img src="${cropImg}" alt="裁剪" loading="lazy" onerror="this.style.display='none'">
+                                <div class="label">✂️ 裁剪</div>
+                            </div>
+                        </div>
+                        <div class="batch-info">
+                            <div class="top-row">
+                                <span class="fname">${item.filename || '未命名'}</span>
+                                <span class="bbox">框: [${(item.bbox||[]).join(', ')}]</span>
+                                <span class="score">得分: ${formatNum(item.score)}</span>
+                            </div>
+                            ${subHtml}
+                        </div>
+                        <div class="batch-actions">
+                            <button class="btn btn-secondary download-crop-btn" data-idx="${idx}">⬇ 裁剪</button>
+                        </div>
+                    </div>
+                `;
             });
-            html += `</div>`;
-            html += `<div class="btn-group" style="margin-top:10px;">
+
+            html += `<div class="btn-group" style="margin-top:12px;">
                         <button class="btn btn-secondary" id="batchDownloadCropsBtn">📦 批量下载所有裁剪图 (ZIP)</button>
                      </div>`;
             container.innerHTML = html;
-
-            container.querySelectorAll('.view-detail-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const idx = parseInt(btn.getAttribute('data-idx'));
-                    const item = results[idx];
-                    if (!item) return;
-                    const modal = $('detailModal');
-                    const img = $('modalCropImage');
-                    const info = $('modalInfo');
-                    if (item.crop_image) img.src = item.crop_image;
-                    else img.src = '';
-                    info.innerHTML = `
-                        <strong>${item.filename || '未命名'}</strong><br>
-                        裁剪框: [${(item.bbox||[]).join(', ')}]<br>
-                        得分: ${formatNum(item.score)}<br>
-                        说明: ${item.explanation || '无'}
-                    `;
-                    modal.classList.add('active');
-                });
-            });
 
             container.querySelectorAll('.download-crop-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
