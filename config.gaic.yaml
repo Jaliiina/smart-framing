@@ -218,6 +218,17 @@ scientific_optimizer:
     distractor_avoidance: 0.16
     visual_artifact: 0.14
 
+final_quality_rerank:
+  enabled: true
+  top_n: 24
+  local_variant_seed_n: 6
+  takeover_margin: 0.0
+  base_weight: 0.44
+  quality_weight: 0.56
+  pareto_weight: 0.0
+  variant_base_decay: 0.985
+  no_subject_max_score_drop: 0.02
+
 composition:
   weights:
     rule_of_thirds: 0.35

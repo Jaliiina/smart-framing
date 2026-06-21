@@ -291,7 +291,27 @@ def load_config(config_path: str = "config.yaml") -> dict:
     if not p.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
     with open(p, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    return _resolve_config_file_paths(config, p.parent.resolve())
+
+
+def _resolve_config_file_paths(value, config_dir: Path):
+    """Resolve model file paths relative to the YAML file location."""
+    path_keys = {"weights_path", "lite_weights_path", "model_path", "model_name"}
+    if isinstance(value, dict):
+        resolved = {}
+        for key, item in value.items():
+            if key in path_keys and isinstance(item, str):
+                candidate = Path(item)
+                if not candidate.is_absolute():
+                    config_relative = config_dir / candidate
+                    if config_relative.exists():
+                        item = str(config_relative)
+            resolved[key] = _resolve_config_file_paths(item, config_dir)
+        return resolved
+    if isinstance(value, list):
+        return [_resolve_config_file_paths(item, config_dir) for item in value]
+    return value
 
 
 # ---------------------------------------------------------------------------
