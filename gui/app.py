@@ -79,17 +79,18 @@ cropper: AestheticCropper = None
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.gaic.yaml"
+
+
+def get_config_path() -> str:
+    return os.environ.get("AESTHETIC_CROPPER_CONFIG", str(DEFAULT_CONFIG_PATH))
 
 
 def get_cropper() -> AestheticCropper:
     """Lazy-initialize the AestheticCropper instance."""
     global cropper
     if cropper is None:
-        config_path = os.environ.get("AESTHETIC_CROPPER_CONFIG")
-        if not config_path:
-            config_path = str(DEFAULT_CONFIG_PATH)
-        cropper = AestheticCropper(config_path=config_path)
+        cropper = AestheticCropper(config_path=get_config_path())
     return cropper
 
 
@@ -108,7 +109,7 @@ def convert_to_clip_prompts(text: str):
     try:
         from src.llm_crop_explainer import LLMCropExplainer
         # load llm config from project config
-        cfg = load_config(str(DEFAULT_CONFIG_PATH)).get('llm', {})
+        cfg = load_config(get_config_path()).get('llm', {})
         try:
             llm = LLMCropExplainer(cfg)
         except Exception:
@@ -244,8 +245,8 @@ def crop_image():
             cr.fusion.top_k_display = 5
         except Exception:
             original_top_k = None
-        # If user provided a prompt or pre-converted prompts, append to semantic positive prompts temporarily
-        appended = None
+        # If user provided a prompt or pre-converted prompts, apply them for this request only.
+        original_semantic_prompts = None
         try:
             prompts_to_use = None
             if clip_prompts is not None:
@@ -256,9 +257,12 @@ def crop_image():
             if prompts_to_use:
                 scs = getattr(cr, 'semantic_crop_scorer', None)
                 if scs and hasattr(scs, 'positive_prompts'):
-                    # backup and append
-                    appended = list(scs.positive_prompts)
-                    scs.positive_prompts = list(scs.positive_prompts) + list(prompts_to_use)
+                    original_semantic_prompts = list(scs.positive_prompts)
+                    merged_prompts = original_semantic_prompts + list(prompts_to_use)
+                    if hasattr(scs, 'set_positive_prompts'):
+                        scs.set_positive_prompts(merged_prompts)
+                    else:
+                        scs.positive_prompts = merged_prompts
         except Exception:
             app.logger.exception('Failed to append user CLIP prompts, continuing without them')
 
@@ -329,8 +333,8 @@ def crop_image():
                 "contrast": float(round(float(result.best_sub_scores.contrast), 4)),
                 "saturation": float(round(float(result.best_sub_scores.saturation), 4)),
             },
-            "original_image": image_to_base64(vis),  # 甯︽鏍囨敞鍥?
-            "raw_image": image_to_base64(image),  # 鏂板锛氭棤妗嗗師濮嬪浘
+            "original_image": image_to_base64(vis),  
+            "raw_image": image_to_base64(image),  
             "crop_image": image_to_base64(result.best_crop),
             "top_candidates": [
                 {
@@ -360,13 +364,16 @@ def crop_image():
             pass
         # restore semantic prompts if modified
         try:
-            if user_prompt and 'appended' in locals() and appended is not None:
+            if 'original_semantic_prompts' in locals() and original_semantic_prompts is not None:
                 scs = getattr(cr, 'semantic_crop_scorer', None)
                 if scs and hasattr(scs, 'positive_prompts'):
-                    scs.positive_prompts = appended
+                    if hasattr(scs, 'set_positive_prompts'):
+                        scs.set_positive_prompts(original_semantic_prompts)
+                    else:
+                        scs.positive_prompts = original_semantic_prompts
         except Exception:
             pass
-        # 鎭㈠涔嬪墠鐨?top_k_display 璁剧疆
+        # 恢复之前的 top_k_display 设置
         try:
             if original_top_k is not None:
                 cr.fusion.top_k_display = original_top_k
@@ -394,8 +401,8 @@ def batch_process():
         except Exception:
             clip_prompts = None
 
-    # If prompts provided, temporarily append once before processing loop
-    appended = None
+    # If prompts provided, temporarily append once before processing loop.
+    original_semantic_prompts = None
     try:
         prompts_to_use = None
         if clip_prompts is not None:
@@ -409,8 +416,12 @@ def batch_process():
         if prompts_to_use:
             scs = getattr(cr, 'semantic_crop_scorer', None)
             if scs and hasattr(scs, 'positive_prompts'):
-                appended = list(scs.positive_prompts)
-                scs.positive_prompts = list(scs.positive_prompts) + list(prompts_to_use)
+                original_semantic_prompts = list(scs.positive_prompts)
+                merged_prompts = original_semantic_prompts + list(prompts_to_use)
+                if hasattr(scs, 'set_positive_prompts'):
+                    scs.set_positive_prompts(merged_prompts)
+                else:
+                    scs.positive_prompts = merged_prompts
 
         for file in files:
             if not file or file.filename == "":
@@ -469,12 +480,15 @@ def batch_process():
                     except OSError:
                         pass
     finally:
-        # restore appended prompts if modified
+        # restore semantic prompts if modified
         try:
-            if appended is not None:
+            if original_semantic_prompts is not None:
                 scs = getattr(cr, 'semantic_crop_scorer', None)
                 if scs and hasattr(scs, 'positive_prompts'):
-                    scs.positive_prompts = appended
+                    if hasattr(scs, 'set_positive_prompts'):
+                        scs.set_positive_prompts(original_semantic_prompts)
+                    else:
+                        scs.positive_prompts = original_semantic_prompts
         except Exception:
             app.logger.exception('Failed to restore semantic prompts after batch')
 
@@ -577,7 +591,7 @@ def assistant_chat():
         from src.utils import load_config
         from src.llm_crop_explainer import LLMCropExplainer
 
-        config_path = os.environ.get('AESTHETIC_CROPPER_CONFIG', str(DEFAULT_CONFIG_PATH))
+        config_path = get_config_path()
         cfg = load_config(config_path)
         llm_cfg = cfg.get('llm', {})
         llm_impl = None
@@ -643,7 +657,7 @@ def assistant_stream():
         from src.utils import load_config
         from src.llm_crop_explainer import LLMCropExplainer
 
-        config_path = os.environ.get('AESTHETIC_CROPPER_CONFIG', str(DEFAULT_CONFIG_PATH))
+        config_path = get_config_path()
         cfg = load_config(config_path)
         llm_cfg = cfg.get('llm', {})
         try:
@@ -677,7 +691,7 @@ def assistant_stream():
 def get_config():
     """Return current configuration."""
     try:
-        config_path = os.environ.get("AESTHETIC_CROPPER_CONFIG", str(DEFAULT_CONFIG_PATH))
+        config_path = get_config_path()
         config = load_config(config_path)
         return jsonify(config)
     except Exception as e:

@@ -91,6 +91,21 @@ class SemanticCropScorer:
             logger.warning(f"Semantic CLIP scorer unavailable: {exc}")
         self._loaded = True
 
+    def set_positive_prompts(self, prompts: List[str]) -> None:
+        """Replace positive prompts and refresh cached CLIP text features."""
+        self.positive_prompts = list(prompts)
+        if not self._loaded:
+            return
+        if self._clip is None or self._model is None:
+            return
+        try:
+            with torch.no_grad():
+                pos_tokens = self._clip.tokenize(self.positive_prompts).to(self.device)
+                pos = self._model.encode_text(pos_tokens).float()
+            self._pos = pos / pos.norm(dim=-1, keepdim=True)
+        except Exception as exc:
+            logger.warning(f"Failed to refresh semantic positive prompts: {exc}")
+
     def score_candidates(
         self,
         image: np.ndarray,

@@ -99,28 +99,27 @@
         /* ====== 权重面板 ====== */
         .weights-panel {
             display: flex;
-            flex-wrap: nowrap;
-            gap: 24px;
-            overflow-x: auto;
+            flex-wrap: wrap;
+            gap: 12px 20px;
             padding: 6px 0;
-            min-width: max-content;
         }
         .weight-slider {
             display: flex;
             align-items: center;
-            gap: 10px;
-            flex: 0 0 auto;
-            min-width: 140px;
+            gap: 8px;
+            flex: 0 1 auto;
+            min-width: 120px;
         }
         .weight-slider label {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 500;
             opacity: 0.75;
             white-space: nowrap;
             flex-shrink: 0;
+            min-width: 36px;
         }
         .weight-slider input[type="range"] {
-            flex: 0 0 100px;
+            flex: 0 0 70px;
             height: 4px;
             -webkit-appearance: none;
             background: rgba(120,160,185,0.30);
@@ -128,17 +127,17 @@
         }
         .weight-slider input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             background: #7fa5b9;
             cursor: pointer;
             border: 2px solid rgba(255,255,255,0.8);
         }
         .weight-slider span {
-            width: 42px;
+            width: 36px;
             text-align: right;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 500;
             font-variant-numeric: tabular-nums;
             flex-shrink: 0;
@@ -1087,7 +1086,7 @@ async function processSingleImage(file) {
         const userPrompt = $('userPromptInput') ? $('userPromptInput').value.trim() : '';
         if (userPrompt) formData.append('user_prompt', userPrompt);
         try {
-            if (window._convertedClipPromptsSingle && Array.isArray(window._convertedClipPromptsSingle) && window._convertedClipPromptsSingle.length) {
+            if (window._convertedClipPromptsSingleText === userPrompt && window._convertedClipPromptsSingle && Array.isArray(window._convertedClipPromptsSingle) && window._convertedClipPromptsSingle.length) {
                 formData.append('clip_prompts', JSON.stringify(window._convertedClipPromptsSingle));
             }
         } catch (e) { /* ignore */ }
@@ -1199,7 +1198,7 @@ async function processBatch(files) {
         const batchPrompt = $('batchPromptInput') ? $('batchPromptInput').value.trim() : '';
         if (batchPrompt) formData.append('user_prompt', batchPrompt);
         try {
-            if (window._convertedClipPromptsBatch && Array.isArray(window._convertedClipPromptsBatch) && window._convertedClipPromptsBatch.length) {
+            if (window._convertedClipPromptsBatchText === batchPrompt && window._convertedClipPromptsBatch && Array.isArray(window._convertedClipPromptsBatch) && window._convertedClipPromptsBatch.length) {
                 formData.append('clip_prompts', JSON.stringify(window._convertedClipPromptsBatch));
             }
         } catch (e) { /* ignore */ }
@@ -1795,6 +1794,7 @@ function init() {
                 const j = await resp.json();
                 const prompts = j.prompts || [];
                 window._convertedClipPromptsSingle = prompts;
+                window._convertedClipPromptsSingleText = text;
                 if (disp) disp.textContent = prompts.join(' | ');
             } catch (err) {
                 console.error(err);
@@ -1823,6 +1823,7 @@ function init() {
                 const j = await resp.json();
                 const prompts = j.prompts || [];
                 window._convertedClipPromptsBatch = prompts;
+                window._convertedClipPromptsBatchText = text;
                 if (disp) disp.textContent = prompts.join(' | ');
             } catch (err) {
                 console.error(err);
