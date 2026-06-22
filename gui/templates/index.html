@@ -286,15 +286,62 @@
 <div class="container">
     <!-- ======== 标题 ======== -->
     <div class="glass-card glass-card-header">
-        <h1>
+        <h1 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
             <span>📸 AestheticCropper</span>
             <small>智能美学裁剪 · 多特征融合</small>
             <span style="margin-left:auto;font-size:14px;font-weight:400;opacity:0.5;">v2.7</span>
+            <!-- ====== 系统介绍下拉按钮 ====== -->
+            <button id="systemIntroBtn" style="
+                background:rgba(127,165,185,0.15);
+                border:1px solid rgba(127,165,185,0.25);
+                border-radius:20px;
+                padding:4px 14px;
+                font-size:13px;
+                font-weight:500;
+                color:#1e2f3a;
+                cursor:pointer;
+                transition:all 0.2s;
+                display:flex;
+                align-items:center;
+                gap:4px;
+                font-family:inherit;
+            " onmouseover="this.style.background='rgba(127,165,185,0.3)'" onmouseout="this.style.background='rgba(127,165,185,0.15)'">
+                📖 系统介绍 <span id="introArrow">▾</span>
+            </button>
         </h1>
         <p style="margin-top:4px;opacity:0.6;font-size:15px;font-weight:400;">
             基于显著性 · 美学 · 构图 · 主体 · 技术的智能裁剪系统
         </p>
+
+        <!-- ====== 系统介绍下拉面板 ====== -->
+        <div id="systemIntroPanel" style="
+            display:none;
+            margin-top:14px;
+            padding:20px 24px;
+            background:rgba(255,255,255,0.20);
+            backdrop-filter:blur(12px);
+            -webkit-backdrop-filter:blur(12px);
+            border-radius:16px;
+            border:1px solid rgba(255,255,255,0.25);
+            box-shadow:0 8px 32px rgba(60,100,130,0.08);
+            animation:fadeSlideDown 0.25s ease;
+            max-height:480px;
+            overflow-y:auto;
+            line-height:1.7;
+            font-size:14px;
+        ">
+            <!-- 内容由 JavaScript 动态渲染，方便维护 -->
+            <div id="systemIntroContent"></div>
+        </div>
     </div>
+
+<!-- 添加动画 -->
+<style>
+@keyframes fadeSlideDown {
+    from { opacity:0; transform:translateY(-8px); }
+    to { opacity:1; transform:translateY(0); }
+}
+</style>
 
     <!-- ======== 权重调节面板 ======== -->
     <div class="glass-card">
@@ -505,7 +552,7 @@ function downloadBase64Image(b64, name) {
 let currentWeights = {};
 let batchProcessedData = [];
 let history = [];
-const DEFAULT_WEIGHTS = { aesthetic: 0.25, saliency: 0.25, composition: 0.20, subject: 0.18, technical: 0.12, area_prior: 0.00 };
+const DEFAULT_WEIGHTS = { aesthetic: 0.30, saliency: 0.04, composition: 0.24, subject: 0.22, technical: 0.07, area_prior: 0.09,semantic: 0.12  };
 const MAX_HISTORY = 20;
 let cropper = null;
 let adjustParams = { brightness: 0, contrast: 0, saturation: 0, hue: 0 };
@@ -519,8 +566,8 @@ const subKeys = ['aesthetic','saliency','composition','subject','technical','are
 function renderWeightSliders(weights) {
     const panel = $('weightsPanel');
     panel.innerHTML = '';
-    const keys = ['aesthetic','saliency','composition','subject','technical','area_prior'];
-    const labels = { aesthetic: '美学', saliency: '显著性', composition: '构图', subject: '主体', technical: '技术', area_prior: '面积先验' };
+    const keys = ['aesthetic','saliency','composition','subject','technical','area_prior','semantic'];
+    const labels = { aesthetic: '美学', saliency: '显著性', composition: '构图', subject: '主体', technical: '技术', area_prior: '面积先验', semantic: '语义'};
     keys.forEach(key => {
         const div = document.createElement('div');
         div.className = 'weight-slider';
@@ -547,7 +594,7 @@ async function loadConfig() {
         const config = await resp.json();
         const w = config.fusion?.weights || DEFAULT_WEIGHTS;
         const filtered = {};
-        ['aesthetic','saliency','composition','subject','technical','area_prior'].forEach(k => {
+        ['aesthetic','saliency','composition','subject','technical','area_prior',,'semantic'].forEach(k => {
             filtered[k] = w[k] !== undefined ? w[k] : DEFAULT_WEIGHTS[k];
         });
         currentWeights = filtered;
@@ -1242,10 +1289,6 @@ function renderBatchResults(results) {
         const defaultScore = hasCandidates ? candidates[0].score : item.score;
         const defaultBbox = hasCandidates ? (candidates[0].bbox || item.bbox) : item.bbox;
         const defaultOrig = hasCandidates ? (candidates[0].original_with_bbox || item.original_image) : item.original_image;
-        const scoreId = `score_${idx}`;
-        const bboxId = `bbox_${idx}`;
-        const cropImgId = `cropImg_${idx}`;
-        const origImgId = `origImg_${idx}`;
         
         let subHtml = '';
         if (item.sub_scores && typeof item.sub_scores === 'object') {
@@ -1273,11 +1316,11 @@ function renderBatchResults(results) {
             <div class="batch-result-card" data-item-idx="${idx}">
                 <div class="batch-thumbs">
                     <div class="batch-thumb-wrapper">
-                        <img id="${origImgId}" src="${defaultOrig}" alt="原图" loading="lazy" onerror="this.style.display='none'">
+                        <img id="origImg_${idx}" src="${defaultOrig}" alt="原图" loading="lazy" onerror="this.style.display='none'">
                         <div class="label">📷 原图</div>
                     </div>
                     <div class="batch-thumb-wrapper">
-                        <img id="${cropImgId}" src="${defaultImg}" alt="裁剪" loading="lazy" onerror="this.style.display='none'">
+                        <img id="cropImg_${idx}" src="${defaultImg}" alt="裁剪" loading="lazy" onerror="this.style.display='none'">
                         <div class="label">✂️ 裁剪</div>
                         ${candButtons ? `<div class="cand-selector">${candButtons}</div>` : ''}
                     </div>
@@ -1285,8 +1328,8 @@ function renderBatchResults(results) {
                 <div class="batch-info" style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:200px;">
                     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                         <span style="font-weight:600;font-size:14px;">${item.filename || '未命名'}</span>
-                        <span style="font-size:18px;font-weight:700;color:#4a6a7a;">${formatNum(defaultScore)}</span>
-                        <span style="font-size:12px;opacity:0.4;">框: [${(defaultBbox||[]).join(', ')}]</span>
+                        <span id="score_${idx}" style="font-size:18px;font-weight:700;color:#4a6a7a;">${formatNum(defaultScore)}</span>
+                        <span id="bbox_${idx}" style="font-size:12px;opacity:0.4;">框: [${(defaultBbox||[]).join(', ')}]</span>
                     </div>
                     ${subHtml}
                     <div style="font-size:13px;line-height:1.5;opacity:0.85;padding:4px 0;">${(item.explanation||'无裁剪理由')}</div>
@@ -1320,8 +1363,20 @@ function renderBatchResults(results) {
             const cand = item.top_candidates[candIdx];
             if (origImg) origImg.src = cand.original_with_bbox || item.original_image;
             if (cropImg) cropImg.src = cand.crop_base64 || '';
-            if (scoreSpan) scoreSpan.textContent = `得分: ${formatNum(cand.score)}`;
-            if (bboxSpan) bboxSpan.textContent = `框: [${(cand.bbox || item.bbox || []).join(', ')}]`;
+            if (scoreSpan) {
+                // 更新得分显示，保留千分位格式
+                const scoreVal = cand.score !== undefined && cand.score !== null ? cand.score : 0;
+                scoreSpan.textContent = formatNum(scoreVal);
+            }
+            if (bboxSpan) {
+                const bboxVal = cand.bbox || item.bbox || [];
+                bboxSpan.textContent = `框: [${bboxVal.join(', ')}]`;
+            }
+            // 更新说明文字（可选）
+            const infoDiv = card.querySelector('.batch-info > div:last-child');
+            if (infoDiv && item.top_candidates[candIdx]) {
+                // 可以在这里更新裁剪理由，如果有的话
+            }
             const siblings = this.parentElement.querySelectorAll('.cand-btn');
             siblings.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
@@ -1844,7 +1899,83 @@ function init() {
             alert('请先上传图片并运行智能裁剪');
         }
     });
+    // 系统介绍下拉面板
+    function initSystemIntro() {
+        const btn = document.getElementById('systemIntroBtn');
+        const panel = document.getElementById('systemIntroPanel');
+        const arrow = document.getElementById('introArrow');
+        const content = document.getElementById('systemIntroContent');
 
+        if (!btn || !panel) return;
+
+        // 渲染介绍内容
+        content.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 32px;">
+                <div>
+                    <h4 style="font-size:15px;margin-bottom:6px;color:#1e2f3a;">📖 系统简介</h4>
+                    <p style="opacity:0.8;font-size:14px;line-height:1.8;">
+                        AestheticCropper 是一个基于<strong>多特征融合</strong>的智能美学裁剪系统，
+                        通过综合分析图像的显著性、美学质量、构图原则、主体完整性、
+                        技术质量和语义理解等多个维度，自动推荐最优裁剪方案。
+                    </p>
+                </div>
+                <div>
+                    <h4 style="font-size:15px;margin-bottom:6px;color:#1e2f3a;">🧠 核心能力</h4>
+                    <ul style="opacity:0.8;font-size:14px;line-height:1.9;padding-left:18px;list-style:none;">
+                        <li><strong>显著性检测</strong> — U²Net定位视觉焦点</li>
+                        <li><strong>美学评分</strong> — LAION美学预测模型</li>
+                        <li><strong>构图分析</strong> — 三分法·对称性·留白</li>
+                        <li><strong>主体识别</strong> — YOLO检测重要物体</li>
+                        <li><strong>语义理解</strong> — CLIP文本引导，匹配审美偏好</li>
+                        <li><strong>技术质量</strong> — 清晰度·亮度·对比度·饱和度</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 style="font-size:15px;margin-bottom:6px;color:#1e2f3a;">📦 功能模块</h4>
+                    <ul style="opacity:0.8;font-size:14px;line-height:1.9;padding-left:18px;list-style:none;">
+                        <li><strong>单图处理</strong> — 上传单张，获取智能裁剪建议</li>
+                        <li><strong>批量处理</strong> — 多张并行，支持导出报告</li>
+                        <li><strong>手动精修</strong> — 自由裁剪 + 图像调整</li>
+                        <li><strong>可视化诊断</strong> — 热力图·主体检测·雷达图</li>
+                        <li><strong>AI助手</strong> — 多模态大模型驱动的裁剪顾问</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 style="font-size:15px;margin-bottom:6px;color:#1e2f3a;">💡 使用建议</h4>
+                    <ul style="opacity:0.8;font-size:14px;line-height:1.9;padding-left:18px;list-style:none;">
+                        <li>调节<strong>权重滑块</strong>改变各维度重要性</li>
+                        <li>输入<strong>CLIP文本提示</strong>引导裁剪风格</li>
+                        <li>使用<strong>手动精修</strong>微调自动裁剪结果</li>
+                        <li>导出<strong>详细报告</strong>包含裁剪理由和评分</li>
+                    </ul>
+                </div>
+            </div>
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(127,165,185,0.15);font-size:13px;opacity:0.5;display:flex;gap:20px;flex-wrap:wrap;">
+                <span>🔧 版本 v2.7</span>
+                <span>📅 2026</span>
+                <span>🏷️ 多特征融合 · 智能美学裁剪</span>
+            </div>
+        `;
+
+        let isOpen = false;
+
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            isOpen = !isOpen;
+            panel.style.display = isOpen ? 'block' : 'none';
+            arrow.textContent = isOpen ? '▴' : '▾';
+        });
+
+        // 点击页面其他地方关闭下拉
+        document.addEventListener('click', function(e) {
+            if (isOpen && !panel.contains(e.target) && e.target !== btn) {
+                panel.style.display = 'none';
+                arrow.textContent = '▾';
+                isOpen = false;
+            }
+        });
+}
+    initSystemIntro();
     console.log('AestheticCropper 已启动，全部功能正常');
 }
 
