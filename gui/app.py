@@ -66,25 +66,27 @@ def get_cropper() -> AestheticCropper:
         cropper = AestheticCropper(config_path=config_path)
     return cropper
 
+
 current_weights = None
 
-@app.route('/api/config', methods=['POST'])
+
+@app.route("/api/config", methods=["POST"])
 def update_config():
     global cropper, current_weights
     data = request.get_json()
-    if 'weights' in data:
-        current_weights = data['weights']
+    if "weights" in data:
+        current_weights = data["weights"]
         if cropper:
             # 更新 fusion 模块的权重
             for k, v in current_weights.items():
-                setattr(cropper.fusion, f'weight_{k}', v)
+                setattr(cropper.fusion, f"weight_{k}", v)
             # 重新归一化
             total = sum(current_weights.values())
             if total > 0:
                 for k in current_weights:
-                    setattr(cropper.fusion, f'weight_{k}', current_weights[k] / total)
-        return jsonify({'status': 'ok'})
-    return jsonify({'error': 'Invalid config'}), 400
+                    setattr(cropper.fusion, f"weight_{k}", current_weights[k] / total)
+        return jsonify({"status": "ok"})
+    return jsonify({"error": "Invalid config"}), 400
 
 
 def image_to_base64(image: np.ndarray, fmt: str = ".jpg") -> str:
@@ -111,22 +113,52 @@ def crop_image():
     if file.filename == "":
         return jsonify({"error": "No selected file"}), 400
 
-    # Read uploaded file into temp file (auto-deleted after processing)
+    # Read uploaded file into temp file
     ext = Path(file.filename).suffix or ".jpg"
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
 
     try:
-        # Process
         cr = get_cropper()
         result = cr.process(tmp_path)
 
-        # Prepare visualization
         image = load_image(tmp_path)
+        h, w = image.shape[:2]
+
+        # ========== 生成可视化图 ==========
+        # 1. 显著性热力图叠加
+        saliency_map = result.saliency_map
+        if saliency_map is not None:
+            saliency_uint8 = (saliency_map * 255).astype(np.uint8)
+            heatmap = cv2.applyColorMap(saliency_uint8, cv2.COLORMAP_JET)
+            alpha = 0.5
+            overlay = cv2.addWeighted(image, 1 - alpha, heatmap, alpha, 0)
+            saliency_vis = image_to_base64(overlay)
+        else:
+            saliency_vis = None
+
+        # 2. 主体检测标注图
+        vis_obj = image.copy()
+        for obj in result.detected_objects:
+            x1, y1, x2, y2 = obj.bbox
+            cv2.rectangle(vis_obj, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"{obj.class_name} {obj.confidence:.2f}"
+            cv2.putText(
+                vis_obj,
+                label,
+                (x1, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+            )
+        object_vis = image_to_base64(vis_obj)
+
+        # 原有可视化：最佳框标注
         vis = draw_bbox(image, result.best_bbox, f"score={result.best_score:.3f}")
 
-        # Prepare response
+        # 准备响应
         response = {
             "bbox": [int(x) for x in result.best_bbox],
             "score": float(round(float(result.best_score), 4)),
@@ -134,36 +166,49 @@ def crop_image():
             "sub_scores": {
                 "aesthetic": float(round(float(result.best_sub_scores.aesthetic), 4)),
                 "saliency": float(round(float(result.best_sub_scores.saliency), 4)),
-                "composition": float(round(float(result.best_sub_scores.composition), 4)),
+                "composition": float(
+                    round(float(result.best_sub_scores.composition), 4)
+                ),
                 "subject": float(round(float(result.best_sub_scores.subject), 4)),
                 "technical": float(round(float(result.best_sub_scores.technical), 4)),
                 "area_prior": float(round(float(result.best_sub_scores.area_prior), 4)),
+                # 其他子分数（可选）
                 "thirds": float(round(float(result.best_sub_scores.thirds), 4)),
-                "center_balance": float(round(float(result.best_sub_scores.center_balance), 4)),
+                "center_balance": float(
+                    round(float(result.best_sub_scores.center_balance), 4)
+                ),
                 "whitespace": float(round(float(result.best_sub_scores.whitespace), 4)),
-                "edge_simplicity": float(round(float(result.best_sub_scores.edge_simplicity), 4)),
+                "edge_simplicity": float(
+                    round(float(result.best_sub_scores.edge_simplicity), 4)
+                ),
                 "symmetry": float(round(float(result.best_sub_scores.symmetry), 4)),
                 "sharpness": float(round(float(result.best_sub_scores.sharpness), 4)),
                 "brightness": float(round(float(result.best_sub_scores.brightness), 4)),
                 "contrast": float(round(float(result.best_sub_scores.contrast), 4)),
                 "saturation": float(round(float(result.best_sub_scores.saturation), 4)),
             },
-            "original_image": image_to_base64(vis),
+            "original_image": image_to_base64(vis),  # 带框标注图
+            "raw_image": image_to_base64(image),  # 新增：无框原始图
             "crop_image": image_to_base64(result.best_crop),
             "top_candidates": [
                 {
                     "bbox": [int(x) for x in c.bbox],
                     "score": float(round(float(c.final_score), 4)),
-                    "crop_base64": image_to_base64(image[c.bbox[1]:c.bbox[3], c.bbox[0]:c.bbox[2]])
+                    "crop_base64": image_to_base64(
+                        image[c.bbox[1] : c.bbox[3], c.bbox[0] : c.bbox[2]]
+                    ),
                 }
                 for c in result.top_candidates
             ],
+            "saliency_vis": saliency_vis,
+            "object_vis": object_vis,
         }
 
         return jsonify(response)
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
     finally:
@@ -175,54 +220,82 @@ def crop_image():
 
 @app.route("/api/batch", methods=["POST"])
 def batch_process():
-    """Process multiple uploaded images in batch."""
     files = request.files.getlist("images")
     if not files:
         return jsonify({"error": "No images provided"}), 400
 
     results = []
     cr = get_cropper()
-
-    for file in files:
-        if file.filename == "":
-            continue
-
-        ext = Path(file.filename).suffix or ".jpg"
-        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            file.save(tmp.name)
-            tmp_path = tmp.name
-
-        try:
-            result = cr.process(tmp_path)
-            image = load_image(tmp_path)
-            vis = draw_bbox(image, result.best_bbox, f"score={result.best_score:.3f}")
-            results.append({
-                "filename": file.filename,
-                "bbox": [int(x) for x in result.best_bbox],
-                "score": float(round(float(result.best_score), 4)),
-                "explanation": result.explanation,
-                "original_image": image_to_base64(vis),
-                "crop_image": image_to_base64(result.best_crop),
-                "sub_scores": {
-                    "aesthetic": float(round(float(result.best_sub_scores.aesthetic), 4)),
-                    "saliency": float(round(float(result.best_sub_scores.saliency), 4)),
-                    "composition": float(round(float(result.best_sub_scores.composition), 4)),
-                    "subject": float(round(float(result.best_sub_scores.subject), 4)),
-                    "technical": float(round(float(result.best_sub_scores.technical), 4)),
-                    "area_prior": float(round(float(result.best_sub_scores.area_prior), 4)),
-                },
-            })
-        except Exception as e:
-            results.append({
-                "filename": file.filename,
-                "error": str(e),
-            })
-        finally:
+    original_top_k = cr.fusion.top_k_display
+    cr.fusion.top_k_display = 5  # 确保返回 Top5
+    try:
+        for file in files:
+            if file.filename == "":
+                continue
+            ext = Path(file.filename).suffix or ".jpg"
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                file.save(tmp.name)
+                tmp_path = tmp.name
             try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+                result = cr.process(tmp_path)
+                image = load_image(tmp_path)
+                vis = draw_bbox(
+                    image, result.best_bbox, f"score={result.best_score:.3f}"
+                )
 
+                top_candidates = []
+                for c in result.top_candidates:
+                    crop_img = image[c.bbox[1] : c.bbox[3], c.bbox[0] : c.bbox[2]]
+                    vis_cand = draw_bbox(image, c.bbox, f"score={c.final_score:.3f}")
+                    top_candidates.append(
+                        {
+                            "bbox": [int(x) for x in c.bbox],
+                            "score": float(round(float(c.final_score), 4)),
+                            "crop_base64": image_to_base64(crop_img),
+                            "original_with_bbox": image_to_base64(vis_cand),
+                        }
+                    )
+
+                results.append(
+                    {
+                        "filename": file.filename,
+                        "bbox": [int(x) for x in result.best_bbox],
+                        "score": float(round(float(result.best_score), 4)),
+                        "explanation": result.explanation,
+                        "original_image": image_to_base64(vis),
+                        "crop_image": image_to_base64(result.best_crop),
+                        "sub_scores": {
+                            "aesthetic": float(
+                                round(float(result.best_sub_scores.aesthetic), 4)
+                            ),
+                            "saliency": float(
+                                round(float(result.best_sub_scores.saliency), 4)
+                            ),
+                            "composition": float(
+                                round(float(result.best_sub_scores.composition), 4)
+                            ),
+                            "subject": float(
+                                round(float(result.best_sub_scores.subject), 4)
+                            ),
+                            "technical": float(
+                                round(float(result.best_sub_scores.technical), 4)
+                            ),
+                            "area_prior": float(
+                                round(float(result.best_sub_scores.area_prior), 4)
+                            ),
+                        },
+                        "top_candidates": top_candidates,
+                    }
+                )
+            except Exception as e:
+                results.append({"filename": file.filename, "error": str(e)})
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+    finally:
+        cr.fusion.top_k_display = original_top_k
     return jsonify({"results": results})
 
 
@@ -230,11 +303,14 @@ def batch_process():
 def get_config():
     """Return current configuration."""
     try:
-        config_path = os.environ.get("AESTHETIC_CROPPER_CONFIG", str(DEFAULT_CONFIG_PATH))
+        config_path = os.environ.get(
+            "AESTHETIC_CROPPER_CONFIG", str(DEFAULT_CONFIG_PATH)
+        )
         config = load_config(config_path)
         return jsonify(config)
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
@@ -251,7 +327,6 @@ def export_coordinates():
         )
         writer.writeheader()
         for r in results:
-            # 注意：根据实际数据字段名，可能是 'filename' 或 'image'
             writer.writerow(
                 {
                     "image": r.get("filename", r.get("image", "")),
@@ -268,7 +343,6 @@ def export_coordinates():
             headers={"Content-Disposition": "attachment;filename=predictions.csv"},
         )
     else:
-        # 返回 JSON 格式
         return jsonify(results)
 
 
@@ -284,7 +358,6 @@ def batch_download():
             crop_base64 = item.get("crop_image")
             filename = item.get("filename", "crop")
             if crop_base64 and crop_base64.startswith("data:image"):
-                # 提取 base64 数据
                 img_data = base64.b64decode(crop_base64.split(",")[1])
                 zip_file.writestr(f"{filename}_crop.jpg", img_data)
     zip_buffer.seek(0)
