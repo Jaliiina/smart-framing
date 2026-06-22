@@ -94,6 +94,7 @@ class CropResult:
     best_sub_scores: SubScores
     top_candidates: List[CandidateResult]  # top-K results
     explanation: str = ""
+    explanation_full: str= ""
     saliency_map: Optional[np.ndarray] = None
     detected_objects: List[DetectedObject] = field(default_factory=list)
     intent: str = "other"

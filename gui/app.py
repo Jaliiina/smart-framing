@@ -23,6 +23,8 @@ import cv2
 import numpy as np
 from flask import Flask, jsonify, render_template, request
 from flask.json.provider import DefaultJSONProvider
+from flask import stream_with_context
+import urllib.parse
 
 # Add parent directory to path so we can import src
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -65,6 +67,87 @@ def get_cropper() -> AestheticCropper:
             config_path = str(DEFAULT_CONFIG_PATH)
         cropper = AestheticCropper(config_path=config_path)
     return cropper
+
+
+def convert_to_clip_prompts(text: str):
+    """Convert free-text into CLIP prompt variants.
+
+    Preferred path: use configured LLM (`LLMCropExplainer`) to act as a CLIP
+    prompt expert and translate/expand the user's Chinese input into concise
+    English prompts suitable for CLIP scoring. If LLM is unavailable or fails,
+    fall back to simple template-based variants.
+    """
+    if not text:
+        return []
+
+    # Try LLM-backed conversion first
+    try:
+        from src.llm_crop_explainer import LLMCropExplainer
+        # load llm config from project config
+        cfg = load_config(str(DEFAULT_CONFIG_PATH)).get('llm', {})
+        try:
+            llm = LLMCropExplainer(cfg)
+        except Exception:
+            llm = None
+
+        if llm and getattr(llm, 'enable', False) and getattr(llm, 'api_key', None):
+            # Craft a concise instruction asking for a JSON array of short English prompts
+            instr = (
+                "You are an expert at writing CLIP-style prompts.\n"
+                "Convert the following user input (which may be Chinese) into a list of 5-8 concise, English, CLIP-friendly prompt phrases.\n"
+                "Each prompt should be short (3-7 words), focused, and suitable for CLIP text encoding (no full sentences).\n"
+                "Return ONLY a JSON array of strings, e.g. [\"prompt1\", \"prompt2\"], with no extra explanation.\n"
+                f"User input: {text}"
+            )
+            try:
+                resp = llm.chat(instr)
+                # Try to parse JSON array
+                try:
+                    parsed = json.loads(resp)
+                    if isinstance(parsed, list) and all(isinstance(p, str) for p in parsed):
+                        return parsed
+                except Exception:
+                    # Try to extract JSON object from text
+                    import re
+
+                    m = re.search(r"\[.*\]", resp, re.S)
+                    if m:
+                        try:
+                            parsed = json.loads(m.group(0))
+                            if isinstance(parsed, list) and all(isinstance(p, str) for p in parsed):
+                                return parsed
+                        except Exception:
+                            pass
+                    # Fallback: split by common separators and clean
+                    parts = [p.strip().strip('"') for p in re.split(r"\n|\||;|,", resp) if p.strip()]
+                    # keep short phrases only
+                    parts = [p for p in parts if 2 <= len(p.split()) <= 8]
+                    if parts:
+                        return parts[:8]
+            except Exception:
+                app.logger.exception('LLM conversion to CLIP prompts failed')
+
+    except Exception:
+        # If any import/load fails, fall through to template fallback
+        pass
+
+    # Simple template fallback
+    base = text.strip()
+    variants = [
+        f"a high quality photograph of {base}",
+        f"a close-up shot of {base}",
+        f"a well composed photo of {base}",
+        f"a clean composition featuring {base}",
+        f"a detailed image of {base} with good lighting",
+    ]
+    # dedupe and return
+    seen = set()
+    out = []
+    for v in variants:
+        if v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
 
 
 current_weights = None
@@ -119,8 +202,42 @@ def crop_image():
         file.save(tmp.name)
         tmp_path = tmp.name
 
+    # optional user-provided text or pre-converted CLIP prompts
+    user_prompt = request.form.get('user_prompt') if request.form else None
+    clip_prompts_raw = request.form.get('clip_prompts') if request.form else None
+    clip_prompts = None
+    if clip_prompts_raw:
+        try:
+            clip_prompts = json.loads(clip_prompts_raw)
+        except Exception:
+            clip_prompts = None
+
     try:
         cr = get_cropper()
+        # 确保单图返回 Top-5 候选（临时覆盖显示数量）
+        original_top_k = getattr(cr.fusion, 'top_k_display', None)
+        try:
+            cr.fusion.top_k_display = 5
+        except Exception:
+            original_top_k = None
+        # If user provided a prompt or pre-converted prompts, append to semantic positive prompts temporarily
+        appended = None
+        try:
+            prompts_to_use = None
+            if clip_prompts is not None:
+                prompts_to_use = clip_prompts
+            elif user_prompt:
+                prompts_to_use = convert_to_clip_prompts(user_prompt)
+
+            if prompts_to_use:
+                scs = getattr(cr, 'semantic_crop_scorer', None)
+                if scs and hasattr(scs, 'positive_prompts'):
+                    # backup and append
+                    appended = list(scs.positive_prompts)
+                    scs.positive_prompts = list(scs.positive_prompts) + list(prompts_to_use)
+        except Exception:
+            app.logger.exception('Failed to append user CLIP prompts, continuing without them')
+
         result = cr.process(tmp_path)
 
         image = load_image(tmp_path)
@@ -163,6 +280,7 @@ def crop_image():
             "bbox": [int(x) for x in result.best_bbox],
             "score": float(round(float(result.best_score), 4)),
             "explanation": result.explanation,
+            "explanation_full": getattr(result, 'explanation_full', '') or '',
             "sub_scores": {
                 "aesthetic": float(round(float(result.best_sub_scores.aesthetic), 4)),
                 "saliency": float(round(float(result.best_sub_scores.saliency), 4)),
@@ -216,6 +334,20 @@ def crop_image():
             os.unlink(tmp_path)
         except OSError:
             pass
+        # restore semantic prompts if modified
+        try:
+            if user_prompt and 'appended' in locals() and appended is not None:
+                scs = getattr(cr, 'semantic_crop_scorer', None)
+                if scs and hasattr(scs, 'positive_prompts'):
+                    scs.positive_prompts = appended
+        except Exception:
+            pass
+        # 恢复之前的 top_k_display 设置
+        try:
+            if original_top_k is not None:
+                cr.fusion.top_k_display = original_top_k
+        except Exception:
+            pass
 
 
 @app.route("/api/batch", methods=["POST"])
@@ -226,86 +358,302 @@ def batch_process():
 
     results = []
     cr = get_cropper()
-    original_top_k = cr.fusion.top_k_display
+    original_top_k = getattr(cr.fusion, 'top_k_display', None)
     cr.fusion.top_k_display = 5  # 确保返回 Top5
+    # read optional user_prompt or pre-converted clip_prompts from form
+    user_prompt = request.form.get('user_prompt') if request.form else None
+    clip_prompts_raw = request.form.get('clip_prompts') if request.form else None
+    clip_prompts = None
+    if clip_prompts_raw:
+        try:
+            clip_prompts = json.loads(clip_prompts_raw)
+        except Exception:
+            clip_prompts = None
+
+    # If prompts provided, temporarily append once before processing loop
+    appended = None
     try:
-        for file in files:
-            if file.filename == "":
-                continue
-            ext = Path(file.filename).suffix or ".jpg"
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-                file.save(tmp.name)
-                tmp_path = tmp.name
+        prompts_to_use = None
+        if clip_prompts is not None:
+            prompts_to_use = clip_prompts
+        elif user_prompt:
             try:
+                prompts_to_use = convert_to_clip_prompts(user_prompt)
+            except Exception:
+                prompts_to_use = None
+
+        if prompts_to_use:
+            scs = getattr(cr, 'semantic_crop_scorer', None)
+            if scs and hasattr(scs, 'positive_prompts'):
+                appended = list(scs.positive_prompts)
+                scs.positive_prompts = list(scs.positive_prompts) + list(prompts_to_use)
+
+        for file in files:
+            if not file or file.filename == "":
+                continue
+
+            ext = Path(file.filename).suffix or ".jpg"
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                    file.save(tmp.name)
+                    tmp_path = tmp.name
+
                 result = cr.process(tmp_path)
                 image = load_image(tmp_path)
-                vis = draw_bbox(
-                    image, result.best_bbox, f"score={result.best_score:.3f}"
-                )
+                vis = draw_bbox(image, result.best_bbox, f"score={result.best_score:.3f}")
 
+                # build top_candidates with visual previews
                 top_candidates = []
-                for c in result.top_candidates:
-                    crop_img = image[c.bbox[1] : c.bbox[3], c.bbox[0] : c.bbox[2]]
-                    vis_cand = draw_bbox(image, c.bbox, f"score={c.final_score:.3f}")
-                    top_candidates.append(
-                        {
+                for c in getattr(result, 'top_candidates', []):
+                    try:
+                        crop_img = image[c.bbox[1] : c.bbox[3], c.bbox[0] : c.bbox[2]]
+                        vis_cand = draw_bbox(image.copy(), c.bbox, f"score={c.final_score:.3f}")
+                        top_candidates.append({
                             "bbox": [int(x) for x in c.bbox],
                             "score": float(round(float(c.final_score), 4)),
                             "crop_base64": image_to_base64(crop_img),
                             "original_with_bbox": image_to_base64(vis_cand),
-                        }
-                    )
+                        })
+                    except Exception:
+                        continue
 
-                results.append(
-                    {
-                        "filename": file.filename,
-                        "bbox": [int(x) for x in result.best_bbox],
-                        "score": float(round(float(result.best_score), 4)),
-                        "explanation": result.explanation,
-                        "original_image": image_to_base64(vis),
-                        "crop_image": image_to_base64(result.best_crop),
-                        "sub_scores": {
-                            "aesthetic": float(
-                                round(float(result.best_sub_scores.aesthetic), 4)
-                            ),
-                            "saliency": float(
-                                round(float(result.best_sub_scores.saliency), 4)
-                            ),
-                            "composition": float(
-                                round(float(result.best_sub_scores.composition), 4)
-                            ),
-                            "subject": float(
-                                round(float(result.best_sub_scores.subject), 4)
-                            ),
-                            "technical": float(
-                                round(float(result.best_sub_scores.technical), 4)
-                            ),
-                            "area_prior": float(
-                                round(float(result.best_sub_scores.area_prior), 4)
-                            ),
-                        },
-                        "top_candidates": top_candidates,
-                    }
-                )
+                results.append({
+                    "filename": file.filename,
+                    "bbox": [int(x) for x in result.best_bbox],
+                    "score": float(round(float(result.best_score), 4)),
+                    "explanation": getattr(result, 'explanation', ''),
+                    "explanation_full": getattr(result, 'explanation_full', '') or '',
+                    "original_image": image_to_base64(vis),
+                    "crop_image": image_to_base64(result.best_crop),
+                    "top_candidates": top_candidates,
+                    "sub_scores": {
+                        "aesthetic": float(round(float(getattr(result.best_sub_scores, 'aesthetic', 0)), 4)),
+                        "saliency": float(round(float(getattr(result.best_sub_scores, 'saliency', 0)), 4)),
+                        "composition": float(round(float(getattr(result.best_sub_scores, 'composition', 0)), 4)),
+                        "subject": float(round(float(getattr(result.best_sub_scores, 'subject', 0)), 4)),
+                        "technical": float(round(float(getattr(result.best_sub_scores, 'technical', 0)), 4)),
+                        "area_prior": float(round(float(getattr(result.best_sub_scores, 'area_prior', 0)), 4)),
+                    },
+                })
             except Exception as e:
-                results.append({"filename": file.filename, "error": str(e)})
+                results.append({"filename": getattr(file, 'filename', 'unknown'), "error": str(e)})
             finally:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
+                if tmp_path:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
     finally:
-        cr.fusion.top_k_display = original_top_k
+        # restore appended prompts if modified
+        try:
+            if appended is not None:
+                scs = getattr(cr, 'semantic_crop_scorer', None)
+                if scs and hasattr(scs, 'positive_prompts'):
+                    scs.positive_prompts = appended
+        except Exception:
+            app.logger.exception('Failed to restore semantic prompts after batch')
+
+        if original_top_k is not None:
+            try:
+                cr.fusion.top_k_display = original_top_k
+            except Exception:
+                pass
+
     return jsonify({"results": results})
+
+
+@app.route('/api/export_batch_report', methods=['POST'])
+def export_batch_report():
+    """Generate a ZIP report for batch results.
+    Expects JSON: { results: [<items from /api/batch>] }
+    """
+    data = request.get_json(silent=True)
+    if not data or 'results' not in data:
+        return jsonify({'error': 'No results provided'}), 400
+    results = data['results']
+
+    try:
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            combined = []
+            for idx, r in enumerate(results):
+                name_prefix = r.get('filename') or f'image_{idx+1}'
+                # save original image if present
+                orig_b64 = r.get('original_image')
+                if orig_b64 and orig_b64.startswith('data:image'):
+                    orig_data = base64.b64decode(orig_b64.split(',', 1)[1])
+                    zf.writestr(f'{name_prefix}_original.jpg', orig_data)
+
+                # save crop image
+                crop_b64 = r.get('crop_image')
+                if crop_b64 and crop_b64.startswith('data:image'):
+                    crop_data = base64.b64decode(crop_b64.split(',', 1)[1])
+                    zf.writestr(f'{name_prefix}_crop.jpg', crop_data)
+
+                # save top candidates if any
+                for i, tc in enumerate(r.get('top_candidates', [])):
+                    cb = tc.get('crop_base64')
+                    if cb and cb.startswith('data:image'):
+                        imgd = base64.b64decode(cb.split(',', 1)[1])
+                        zf.writestr(f'{name_prefix}_candidate_{i+1}.jpg', imgd)
+
+                # per-image report JSON
+                per = {
+                    'filename': name_prefix,
+                    'bbox': r.get('bbox'),
+                    'score': r.get('score'),
+                    'sub_scores': r.get('sub_scores'),
+                    'explanation': r.get('explanation'),
+                    'explanation_full': r.get('explanation_full', ''),
+                    'top_candidates': r.get('top_candidates', []),
+                }
+                zf.writestr(f'{name_prefix}_report.json', json.dumps(per, ensure_ascii=False, indent=2))
+
+                # per-image human readable
+                lines = []
+                lines.append(f'文件: {name_prefix}')
+                lines.append(f"bbox: {per['bbox']}")
+                lines.append(f"score: {per['score']}")
+                lines.append('\n各维度得分:')
+                for k, v in (per['sub_scores'] or {}).items():
+                    lines.append(f'- {k}: {v}')
+                lines.append('\n简要说明:')
+                lines.append(per.get('explanation') or '')
+                lines.append('\n详细说明:')
+                lines.append(per.get('explanation_full') or '')
+                zf.writestr(f'{name_prefix}_report.txt', '\n'.join(lines))
+
+                combined.append(per)
+
+            # combined report
+            zf.writestr('combined_report.json', json.dumps(combined, ensure_ascii=False, indent=2))
+        zip_buffer.seek(0)
+        return Response(zip_buffer.read(), mimetype='application/zip', headers={
+            'Content-Disposition': 'attachment;filename=batch_report.zip'
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/assistant', methods=['POST'])
+def assistant_chat():
+    """Simple assistant chat endpoint. Expects JSON {"message":"..."}.
+    If LLM is available it will be used; otherwise returns a helpful fallback message.
+    """
+    data = request.get_json(silent=True)
+    if not data or 'message' not in data:
+        return jsonify({'error': 'No message provided'}), 400
+
+    message = data.get('message', '')
+    try:
+        # 不依赖于全局 cropper；直接从配置创建独立的 LLM 助手实例，作为通用咨询服务
+        from src.utils import load_config
+        from src.llm_crop_explainer import LLMCropExplainer
+
+        config_path = os.environ.get('AESTHETIC_CROPPER_CONFIG', str(DEFAULT_CONFIG_PATH))
+        cfg = load_config(config_path)
+        llm_cfg = cfg.get('llm', {})
+        llm_impl = None
+        try:
+            llm_impl = LLMCropExplainer(llm_cfg)
+        except Exception:
+            llm_impl = None
+
+        if llm_impl and getattr(llm_impl, 'api_key', None):
+            try:
+                image_b64 = data.get('image_base64') if isinstance(data, dict) else None
+                reply = llm_impl.chat(message, image_b64=image_b64)
+                return jsonify({'reply': reply, 'llm_used': True})
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                fallback = (
+                    '抱歉，AI 助手暂时无法连接外部模型。你可以询问关于裁剪规则、评分含义，' 
+                    '或上传图片使用“解释裁剪”功能。'
+                )
+                return jsonify({'reply': fallback, 'llm_used': False})
+        else:
+            # LLM 未配置或初始化失败，返回本地规则型回答或建议
+            fallback = (
+                'AI 助手未启用或未配置 API key。当前可帮助解读分数含义：例如美学分数越高代表构图/色彩/清晰度更好；' 
+                '你也可以上传图片使用“解释裁剪”功能（配置 LLM 后可获得更详细分析）。'
+            )
+            return jsonify({'reply': fallback, 'llm_used': False})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/convert_clip', methods=['POST'])
+def convert_clip():
+    """Convert user-provided text into CLIP prompt variants.
+
+    Request JSON: { text: str }
+    Response JSON: { prompts: [str] }
+    """
+    data = request.get_json(silent=True)
+    if not data or 'text' not in data:
+        return jsonify({'error': 'No text provided'}), 400
+    text = data.get('text') or ''
+    try:
+        prompts = convert_to_clip_prompts(text)
+        return jsonify({'prompts': prompts})
+    except Exception as e:
+        app.logger.exception('convert_clip failed')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/assistant_stream', methods=['POST'])
+def assistant_stream():
+    """Streamed assistant reply using SSE-like `data:` chunks. Accepts JSON {message: str}.
+    Falls back to single message streaming when LLM not available.
+    """
+    data = request.get_json(silent=True)
+    if not data or 'message' not in data:
+        return jsonify({'error': 'No message provided'}), 400
+    message = data.get('message', '')
+
+    try:
+        from src.utils import load_config
+        from src.llm_crop_explainer import LLMCropExplainer
+
+        config_path = os.environ.get('AESTHETIC_CROPPER_CONFIG', str(DEFAULT_CONFIG_PATH))
+        cfg = load_config(config_path)
+        llm_cfg = cfg.get('llm', {})
+        try:
+            llm_impl = LLMCropExplainer(llm_cfg)
+        except Exception:
+            llm_impl = None
+
+        history = data.get('history') if isinstance(data, dict) else None
+
+        def generate():
+            if llm_impl and getattr(llm_impl, 'api_key', None):
+                try:
+                    image_b64 = data.get('image_base64') if isinstance(data, dict) else None
+                    for chunk in llm_impl.chat_stream(message, history=history, image_b64=image_b64):
+                        yield chunk
+                        import time
+                        time.sleep(0.07)  # 关键：分片间隔，强制刷新缓冲区
+                except Exception:
+                    yield "event: error\ndata: LLM 调用失败\n\n"
+            else:
+                fallback = 'AI 助手未启用或未配置 API key。你可以先在配置中启用 LLM，或上传图片使用本地裁剪解释功能。'
+                yield f"data: {fallback}\n\n"
+            yield "event: done\ndata: \n\n"
+
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route("/api/config", methods=["GET"])
 def get_config():
     """Return current configuration."""
     try:
-        config_path = os.environ.get(
-            "AESTHETIC_CROPPER_CONFIG", str(DEFAULT_CONFIG_PATH)
-        )
+        config_path = os.environ.get("AESTHETIC_CROPPER_CONFIG", str(DEFAULT_CONFIG_PATH))
         config = load_config(config_path)
         return jsonify(config)
     except Exception as e:
@@ -366,6 +714,291 @@ def batch_download():
         mimetype="application/zip",
         headers={"Content-Disposition": "attachment;filename=crops.zip"},
     )
+
+
+@app.route('/api/export_report', methods=['POST'])
+def export_report():
+    """Generate a ZIP report containing original image, crop image, and a JSON/text report.
+    Expects JSON: { result: {...} } where result is the response returned by /api/crop.
+    """
+    data = request.get_json(silent=True)
+    if not data or 'result' not in data:
+        return jsonify({'error': 'No result provided'}), 400
+    res = data['result']
+
+    try:
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # original image
+            orig_b64 = res.get('original_image')
+            if orig_b64 and orig_b64.startswith('data:image'):
+                orig_data = base64.b64decode(orig_b64.split(',', 1)[1])
+                zf.writestr('original.jpg', orig_data)
+
+            # crop image
+            crop_b64 = res.get('crop_image')
+            if crop_b64 and crop_b64.startswith('data:image'):
+                crop_data = base64.b64decode(crop_b64.split(',', 1)[1])
+                zf.writestr('crop.jpg', crop_data)
+
+            # report JSON
+            report = {
+                'bbox': res.get('bbox'),
+                'score': res.get('score'),
+                'sub_scores': res.get('sub_scores'),
+                'explanation': res.get('explanation'),
+                'explanation_full': res.get('explanation_full', ''),
+                'top_candidates': res.get('top_candidates', []),
+            }
+            zf.writestr('report.json', json.dumps(report, ensure_ascii=False, indent=2))
+
+            # human-readable text report
+            text_lines = []
+            text_lines.append('裁剪详细报告')
+            text_lines.append('-------------------------')
+            text_lines.append(f"bbox: {report['bbox']}")
+            text_lines.append(f"score: {report['score']}")
+            text_lines.append('\n各维度得分:')
+            for k, v in (report['sub_scores'] or {}).items():
+                text_lines.append(f"- {k}: {v}")
+            text_lines.append('\n简要说明:')
+            text_lines.append(report.get('explanation') or '')
+            text_lines.append('\n详细说明:')
+            text_lines.append(report.get('explanation_full') or '')
+            zf.writestr('report.txt', '\n'.join(text_lines))
+
+        zip_buffer.seek(0)
+        return Response(zip_buffer.read(), mimetype='application/zip', headers={
+            'Content-Disposition': 'attachment;filename=report.zip'
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export_report_pdf', methods=['POST'])
+def export_report_pdf():
+    """Generate a PDF report (images + text) from a crop result.
+    POST JSON: { result: <crop response>, font_path: optional path to TTF/OTF for Chinese }
+    """
+    data = request.get_json(silent=True)
+    if not data or 'result' not in data:
+        return jsonify({'error': 'No result provided'}), 400
+    res = data['result']
+    font_path = data.get('font_path')
+
+    # Try importing ReportLab and Pillow
+    try:
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from PIL import Image
+    except Exception as e:
+        return jsonify({'error': 'Missing dependency: please install reportlab and pillow', 'detail': str(e)}), 500
+
+    try:
+        # Prepare images
+        orig_b64 = res.get('original_image')
+        crop_b64 = res.get('crop_image')
+
+        def b64_to_pil(b64):
+            if not b64 or not b64.startswith('data:image'):
+                return None
+            b = base64.b64decode(b64.split(',', 1)[1])
+            return Image.open(io.BytesIO(b)).convert('RGB')
+
+        orig_img = b64_to_pil(orig_b64)
+        crop_img = b64_to_pil(crop_b64)
+
+        # Create PDF in memory
+        pdf_buf = io.BytesIO()
+        c = canvas.Canvas(pdf_buf, pagesize=A4)
+        w, h = A4
+
+        # Register font for Chinese if provided or detect common fonts / project fonts
+        registered_font = None
+        font_used_path = None
+        if font_path:
+            try:
+                pdfmetrics.registerFont(TTFont('CustomFont', font_path))
+                registered_font = 'CustomFont'
+                font_used_path = font_path
+            except Exception:
+                registered_font = None
+                font_used_path = None
+
+        if not registered_font:
+            # first try project-local fonts folder (so teammates can bundle fonts)
+            try:
+                fonts_dir = PROJECT_ROOT / 'fonts'
+                if fonts_dir.exists() and fonts_dir.is_dir():
+                    for f in sorted(fonts_dir.iterdir()):
+                        if f.suffix.lower() in ('.ttf', '.ttc', '.otf'):
+                            try:
+                                pdfmetrics.registerFont(TTFont('CustomFont', str(f)))
+                                registered_font = 'CustomFont'
+                                font_used_path = str(f)
+                                break
+                            except Exception:
+                                continue
+            except Exception:
+                pass
+
+        if not registered_font:
+            # try common Windows/Unix fonts
+            candidates = [
+                os.path.expandvars(r'%SystemRoot%\\Fonts\\msyh.ttc'),
+                os.path.expandvars(r'%SystemRoot%\\Fonts\\simsun.ttc'),
+                '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+                '/usr/share/fonts/truetype/arphic/ukai.ttc'
+            ]
+            for p in candidates:
+                try:
+                    if p and os.path.exists(p):
+                        pdfmetrics.registerFont(TTFont('CustomFont', p))
+                        registered_font = 'CustomFont'
+                        font_used_path = p
+                        break
+                except Exception:
+                    continue
+
+        # Title
+        title_font = registered_font or 'Helvetica'
+        c.setFont(title_font, 18)
+        c.drawString(40, h - 60, '裁剪详细报告')
+        c.setFont(title_font, 10)
+        c.drawString(40, h - 80, f"生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # Draw images
+        y = h - 120
+        img_max_w = (w - 120) / 2
+        img_max_h = 200
+        if orig_img:
+            ir = ImageReader(orig_img)
+            ow, oh = orig_img.size
+            scale = min(img_max_w / ow, img_max_h / oh, 1.0)
+            iw, ih = ow * scale, oh * scale
+            c.drawImage(ir, 40, y - ih, width=iw, height=ih)
+            c.drawString(40, y - ih - 12, '原图（含框）')
+        if crop_img:
+            ir2 = ImageReader(crop_img)
+            cw2, ch2 = crop_img.size
+            scale2 = min(img_max_w / cw2, img_max_h / ch2, 1.0)
+            iw2, ih2 = cw2 * scale2, ch2 * scale2
+            c.drawImage(ir2, 60 + img_max_w, y - ih2, width=iw2, height=ih2)
+            c.drawString(60 + img_max_w, y - ih2 - 12, '裁剪图')
+
+        # Move to text area
+        text_y = y - img_max_h - 36
+        if text_y < 120:
+            c.showPage()
+            text_y = h - 60
+
+        # Scores and bbox
+        c.setFont(title_font, 12)
+        c.drawString(40, text_y, '裁剪信息')
+        c.setFont(title_font, 10)
+        text_y -= 18
+        c.drawString(40, text_y, f"bbox: {res.get('bbox')}")
+        text_y -= 14
+        c.drawString(40, text_y, f"score: {res.get('score')}")
+        text_y -= 18
+
+        sub = res.get('sub_scores') or {}
+        c.drawString(40, text_y, '各维度得分:')
+        text_y -= 14
+        for k, v in sub.items():
+            if text_y < 80:
+                c.showPage(); text_y = h - 60
+            c.drawString(60, text_y, f"- {k}: {v}")
+            text_y -= 12
+
+        # Explanations
+        if text_y < 140:
+            c.showPage(); text_y = h - 60
+        c.setFont(title_font, 12)
+        c.drawString(40, text_y, '简要说明')
+        c.setFont(title_font, 10)
+        text_y -= 18
+        brief = res.get('explanation') or ''
+        # 使用按像素宽度换行以避免中文或长行被截断
+        def wrap_text_by_width(text, font_name, font_size, max_width):
+            lines = []
+            for para in str(text).split('\n'):
+                if para == '':
+                    lines.append('')
+                    continue
+                cur = ''
+                for ch in para:
+                    w = pdfmetrics.stringWidth(cur + ch, font_name, font_size)
+                    if w <= max_width:
+                        cur += ch
+                    else:
+                        if cur:
+                            lines.append(cur)
+                        cur = ch
+                if cur:
+                    lines.append(cur)
+            return lines
+
+        max_text_w = w - 80
+        brief_lines = wrap_text_by_width(brief, title_font, 10, max_text_w)
+        for line in brief_lines:
+            if text_y < 80:
+                c.showPage(); text_y = h - 60
+                c.setFont(title_font, 10)
+            c.drawString(40, text_y, line)
+            text_y -= 12
+
+        full = res.get('explanation_full') or ''
+        if text_y < 140:
+            c.showPage(); text_y = h - 60
+        c.setFont(title_font, 12)
+        c.drawString(40, text_y, '详细说明')
+        c.setFont(title_font, 10)
+        text_y -= 18
+        full_lines = wrap_text_by_width(full, title_font, 10, max_text_w)
+        for line in full_lines:
+            if text_y < 80:
+                c.showPage(); text_y = h - 60
+                c.setFont(title_font, 10)
+            c.drawString(40, text_y, line)
+            text_y -= 12
+
+        c.showPage()
+        c.save()
+        pdf_buf.seek(0)
+
+        # Prepare response headers to help debugging which font was used
+        headers = {
+            'Content-Disposition': 'attachment;filename=report.pdf',
+        }
+        if registered_font:
+            headers['X-Font-Registered'] = 'true'
+            # HTTP headers must be ISO-8859-1; percent-encode path to keep ASCII-safe
+            try:
+                safe_val = urllib.parse.quote(font_used_path or registered_font, safe='')
+            except Exception:
+                safe_val = os.path.basename(font_used_path or '') or registered_font
+            headers['X-Font-Used'] = safe_val
+            # log full path for debugging
+            try:
+                app.logger.info(f"PDF font registered: {font_used_path}")
+            except Exception:
+                pass
+        else:
+            headers['X-Font-Registered'] = 'false'
+            headers['X-Font-Used'] = 'Helvetica'
+
+        return Response(pdf_buf.read(), mimetype='application/pdf', headers=headers)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 def main():

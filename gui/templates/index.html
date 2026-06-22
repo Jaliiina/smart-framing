@@ -15,9 +15,17 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             min-height: 100vh;
             padding: 24px;
-            background-image: url('http://localhost:5000/static/2.jpg'),
-                linear-gradient(145deg, rgba(160,195,215,0.25) 0%, rgba(200,220,235,0.15) 40%, rgba(120,160,185,0.20) 100%),
-                repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 2px, transparent 2px, transparent 6px),
+            background-image:
+                url('/static/2.jpg'),
+                linear-gradient(145deg,
+                    rgba(160, 195, 215, 0.25) 0%,
+                    rgba(200, 220, 235, 0.15) 40%,
+                    rgba(120, 160, 185, 0.20) 100%),
+                repeating-linear-gradient(45deg,
+                    rgba(255, 255, 255, 0.02) 0px,
+                    rgba(255, 255, 255, 0.02) 2px,
+                    transparent 2px,
+                    transparent 6px),
                 linear-gradient(135deg, #d4e3ed 0%, #eaf2f7 50%, #c8dae5 100%);
             background-size: cover, auto, cover;
             background-attachment: fixed, fixed, fixed;
@@ -68,6 +76,8 @@
         .btn-primary:hover { background: rgba(108,139,159,0.85); }
         .btn-secondary { background: rgba(200,215,225,0.50); }
         .btn-secondary:hover { background: rgba(200,215,225,0.70); }
+        .btn-danger { background: rgba(200,100,100,0.5); color: #8a3a3a; }
+        .btn-danger:hover { background: rgba(200,100,100,0.7); }
         .btn-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
         .upload-area {
             border: 2px dashed rgba(120,160,185,0.40); border-radius: 18px; padding: 36px 20px;
@@ -84,30 +94,33 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         .hidden { display: none !important; }
         .status-badge { font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 20px; background: rgba(255,255,255,0.20); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.15); }
+        .mt-16 { margin-top: 16px; }
 
-        /* ====== 权重面板（修复排版） ====== */
+        /* ====== 权重面板 ====== */
         .weights-panel {
             display: flex;
             flex-wrap: nowrap;
-            gap: 12px 24px;
+            gap: 24px;
             overflow-x: auto;
-            padding: 4px 0 2px;;
+            padding: 6px 0;
+            min-width: max-content;
         }
         .weight-slider {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             flex: 0 0 auto;
+            min-width: 140px;
         }
         .weight-slider label {
             font-size: 13px;
             font-weight: 500;
             opacity: 0.75;
             white-space: nowrap;
+            flex-shrink: 0;
         }
         .weight-slider input[type="range"] {
-            width: 100px; /* 固定宽度或 flex: 1 */
-            flex: 0 0 80px;
+            flex: 0 0 100px;
             height: 4px;
             -webkit-appearance: none;
             background: rgba(120,160,185,0.30);
@@ -123,11 +136,12 @@
             border: 2px solid rgba(255,255,255,0.8);
         }
         .weight-slider span {
-            width: 360degpx;
+            width: 42px;
             text-align: right;
             font-size: 13px;
             font-weight: 500;
             font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
         }
 
         /* ====== 智能裁剪结果 ====== */
@@ -145,6 +159,7 @@
         .candidate-item { width: 150px; text-align: center; background: rgba(255,255,255,0.18); backdrop-filter: blur(8px); border-radius: 14px; padding: 8px 8px 12px; border: 1px solid rgba(255,255,255,0.20); }
         .candidate-item img { width: 100%; height: auto; max-height: 120px; object-fit: contain; border-radius: 8px; }
         .candidate-item .score-label { font-size: 12px; font-weight: 500; margin-top: 6px; opacity: 0.8; }
+        .meta { background: rgba(255,255,255,0.12); padding: 12px 16px; border-radius: 12px; margin-top: 8px; }
 
         /* ====== 批量结果卡片 ====== */
         .batch-result-card { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 16px 20px; margin-bottom: 12px; background: rgba(255,255,255,0.10); backdrop-filter: blur(4px); border-radius: 16px; border: 1px solid rgba(255,255,255,0.15); }
@@ -200,18 +215,12 @@
         .tab-content { display: none; padding-top: 8px; }
         .tab-content.active { display: block; }
 
-        /* ====== 手动精修（大图显示） ====== */
+        /* ====== 手动精修 ====== */
         .manual-container { display: flex; flex-wrap: wrap; gap: 24px; }
         .manual-left { flex: 2; min-width: 300px; }
         .manual-right { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 16px; }
         .img-wrapper { position: relative; background: rgba(0,0,0,0.05); border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2); }
-        .img-wrapper img {
-            display: block;
-            width: 100%;
-            height: auto;
-            max-height: 500px;
-            object-fit: contain;
-        }
+        .img-wrapper img { display: block; width: 100%; height: auto; max-height: 500px; object-fit: contain; }
         .img-wrapper .cropper-view-box { border-color: #7fa5b9; }
         .img-wrapper .cropper-line, .img-wrapper .cropper-point { background-color: #7fa5b9; }
         .control-group { background: rgba(255,255,255,0.15); border-radius: 16px; padding: 16px; border: 1px solid rgba(255,255,255,0.15); }
@@ -231,12 +240,42 @@
         .viz-card h4 { margin-top: 8px; font-size: 14px; opacity: 0.7; }
         .viz-card canvas { max-width: 100%; max-height: 260px; margin: 0 auto; }
 
+        /* ====== AI 助手 ====== */
+        .assistant-fab {
+            position: fixed;
+            right: 22px;
+            bottom: 22px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        .assistant-panel {
+            width: 480px;
+            max-width: calc(100vw - 48px);
+            padding: 12px;
+            box-shadow: 0 12px 40px rgba(30,47,58,0.18);
+            border-radius: 14px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(245,250,255,0.9));
+        }
+        .assistant-msg {
+            padding: 8px 10px;
+            border-radius: 10px;
+            margin-bottom:6px;
+            max-width: 88%;
+            word-break: break-word;
+        }
+        .assistant-msg.user { background: linear-gradient(90deg,#e6f1f5,#d9eaf0); align-self:flex-end; }
+        .assistant-msg.bot { background: linear-gradient(90deg,#f7fbff,#eef7fb); align-self:flex-start; }
+
         /* 响应式 */
         @media (max-width: 768px) {
             .manual-container { flex-direction: column; }
             .manual-left, .manual-right { flex: 1; }
             .viz-grid { grid-template-columns: 1fr; }
             .batch-thumb-wrapper { width: 200px; }
+            .assistant-panel { width: calc(100vw - 48px); }
         }
         @media (max-width: 480px) {
             .batch-thumb-wrapper { width: 150px; }
@@ -266,8 +305,6 @@
         </div>
         <div class="weights-panel" id="weightsPanel"></div>
         <div class="btn-group" style="margin-top:8px;">
-
-            
             <button class="btn btn-primary" id="applyWeightsBtn">✦ 应用当前权重</button>
             <button class="btn btn-secondary" id="resetWeightsBtn">↺ 重置默认</button>
             <span id="weightStatusMsg" style="font-size:14px;opacity:0.5;align-self:center;margin-left:4px;"></span>
@@ -278,7 +315,6 @@
     <div class="glass-card" id="singleCard">
         <h2><span class="deco"></span> 单图处理</h2>
 
-        <!-- 上传区域 -->
         <div class="upload-area" id="singleUploadArea">
             <div class="icon">🖼️</div>
             <div class="hint">点击或拖拽上传单张图片</div>
@@ -286,20 +322,29 @@
             <input type="file" id="singleFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" style="display:none">
         </div>
 
-        <!-- Tab 导航 -->
+        <div class="control-group" style="margin-top:10px;">
+            <div style="font-weight:600;margin-bottom:6px;"><span class="deco"></span> CLIP文本提示</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input id="userPromptInput" placeholder="例如：傍晚时分，微笑的人物" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(0,0,0,0.06);" />
+                <button id="convertPromptBtn" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;">转换为 CLIP prompts</button>
+            </div>
+            <div style="margin-top:6px;font-size:12px;opacity:0.55;line-height:1.6;padding:6px 10px;background:rgba(127,165,185,0.06);border-radius:8px;border-left:3px solid rgba(127,165,185,0.25);">
+                💡 输入你想要的画面风格或主题，系统会将其转换为 CLIP 文本向量，引导裁剪结果更符合你的审美偏好。
+                <span style="display:inline-block;margin-left:6px;opacity:0.4;">例如：温馨、电影感、极简、复古</span>
+            </div>
+            <div id="clipPromptsDisplay" style="margin-top:8px;font-size:13px;color:rgba(30,47,58,0.65);"></div>
+        </div>
+
         <div class="tabs" id="singleTabs">
             <button class="tab-btn active" data-tab="smart">🤖 智能裁剪</button>
             <button class="tab-btn" data-tab="manual">🛠️ 手动精修</button>
             <button class="tab-btn" data-tab="viz">📊 可视化诊断</button>
         </div>
 
-        <!-- Tab 内容 -->
         <div id="singleTabContent">
-            <!-- 智能裁剪 -->
             <div class="tab-content active" id="tab-smart">
                 <div id="singleResult" class="mt-16"></div>
             </div>
-            <!-- 手动精修 -->
             <div class="tab-content" id="tab-manual">
                 <div id="manualContainer" class="manual-container">
                     <div class="manual-left">
@@ -339,18 +384,17 @@
                     </div>
                 </div>
             </div>
-            <!-- 可视化诊断 -->
             <div class="tab-content" id="tab-viz">
                 <div id="vizContainer" class="viz-grid">
                     <div class="viz-card">
                         <h4>🔥 显著性热力图</h4>
                         <img id="vizSaliency" src="" alt="显著性热力图">
-                        <div class="placeholder" id="saliencyPlaceholder" style="display:none;">⏳ 等待后端支持</div>
+                        <div class="placeholder" id="saliencyPlaceholder">⏳ 等待后端支持</div>
                     </div>
                     <div class="viz-card">
                         <h4>🎯 主体检测</h4>
                         <img id="vizObjects" src="" alt="主体检测">
-                        <div class="placeholder" id="objectsPlaceholder" style="display:none;">⏳ 等待后端支持</div>
+                        <div class="placeholder" id="objectsPlaceholder">⏳ 等待后端支持</div>
                     </div>
                     <div class="viz-card">
                         <h4>📊 构图评分雷达图</h4>
@@ -373,8 +417,22 @@
             <div class="sub-hint">可一次上传多张，批量裁剪</div>
             <input type="file" id="batchFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" multiple style="display:none">
         </div>
+        <div class="control-group" style="margin-top:10px;">
+            <div style="font-weight:600;margin-bottom:6px;"><span class="deco"></span> CLIP文本提示</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input id="batchPromptInput" placeholder="可选：对所有上传图片应用（例如：户外风景）" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(0,0,0,0.06);" />
+                <button id="batchConvertBtn" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;">转换为 CLIP prompts</button>
+            </div>
+            <div style="margin-top:6px;font-size:12px;opacity:0.55;line-height:1.6;padding:6px 10px;background:rgba(127,165,185,0.06);border-radius:8px;border-left:3px solid rgba(127,165,185,0.25);">
+                💡 输入你想要的画面风格或主题，系统会将其转换为 CLIP 文本向量，引导裁剪结果更符合你的审美偏好。
+                <span style="display:inline-block;margin-left:6px;opacity:0.4;">例如：温馨、电影感、极简、复古</span>
+            </div>
+            <div id="batchClipPromptsDisplay" style="margin-top:8px;font-size:13px;color:rgba(30,47,58,0.65);"></div>
+        </div>
         <div id="batchResult" class="mt-16"></div>
-        <div class="btn-group" style="margin-top:14px;">
+        <div class="btn-group" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-secondary" id="batchDownloadCropsBtn">📦 批量下载裁剪图</button>
+            <button class="btn btn-secondary" id="exportAllReportsBtn">📦 导出全部报告</button>
             <button class="btn btn-secondary" id="exportJsonBtn">📄 导出 JSON</button>
             <button class="btn btn-secondary" id="exportCsvBtn">📊 导出 CSV</button>
             <button class="btn btn-secondary" id="clearBatchBtn">🗑️ 清空结果</button>
@@ -401,524 +459,545 @@
     </div>
 </div>
 
+<!-- ======== AI 助手悬浮 ======== -->
+<div id="aiAssistant" class="assistant-fab">
+    <button id="assistantOpenBtn" class="btn btn-primary">AI 助手</button>
+    <div id="assistantPanel" class="glass-card assistant-panel" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <h3 style="font-size:16px;margin:0;">AestheticCropper小助手</h3>
+            <button id="assistantCloseBtn" class="btn btn-secondary" style="padding:6px 10px;font-size:12px;">关闭</button>
+        </div>
+        <div id="assistantHistory" style="height:320px;overflow:auto;padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;border:1px solid rgba(255,255,255,0.04);"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+            <input id="assistantInput" placeholder="向小助手提问，例如：这张图片怎么裁剪更好？" style="flex:1;padding:12px;border-radius:12px;border:1px solid rgba(0,0,0,0.08);outline:none;" />
+            <input id="assistantFileInput" type="file" accept="image/*" style="display:none;" />
+            <button id="assistantSendBtn" class="btn btn-primary">发送</button>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+            <button id="assistantAttachBtn" class="btn btn-secondary" style="padding:6px 10px;font-size:12px;">📎 附加图片</button>
+            <button id="assistantRemoveBtn" class="btn btn-danger" style="padding:6px 10px;font-size:12px;display:none;">✖ 移除</button>
+            <div id="assistantPreview" style="max-width:140px;max-height:100px;overflow:hidden;border-radius:8px;border:1px solid rgba(0,0,0,0.05);"></div>
+        </div>
+        <div style="margin-top:8px;font-size:12px;opacity:0.75;">提示：可问裁剪理由、评分含义或上传图片后询问具体裁剪。附加后可用"移除"取消图片。</div>
+    </div>
+</div>
+
 <script>
-    // ============================================================
-    //  【完整脚本】包含全部功能 + 手动裁剪默认大图 + 雷达图自动呈现
-    // ============================================================
+// ============================================================
+//  AestheticCropper · 完整脚本
+// ============================================================
 
-    // ---------- 全局状态 ----------
-    let currentWeights = {};
-    let batchProcessedData = [];
-    let history = [];
-    const DEFAULT_WEIGHTS = { aesthetic: 0.25, saliency: 0.25, composition: 0.20, subject: 0.18, technical: 0.12, area_prior: 0.00 };
-    const MAX_HISTORY = 20;
-    let cropper = null;
-    let adjustParams = { brightness: 0, contrast: 0, saturation: 0, hue: 0 };
-    let currentImageData = null;          // 保留兼容，不再用于手动精修
-    let rawImageData = null;              // 存储原始无框图像
-    let radarChartInstance = null;
+// ---------- 工具函数 ----------
+function $(id) { return document.getElementById(id); }
+function clearContainer(id) { const el = $(id); if (el) el.innerHTML = ''; }
+function formatNum(v) { return Number(v).toFixed(4); }
+function formatTime(ts) { const d = new Date(ts); return d.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+function downloadBase64Image(b64, name) {
+    if (!b64) return;
+    const a = document.createElement('a');
+    a.href = b64;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
 
-    // ---------- 工具函数 ----------
-    function $(id) { return document.getElementById(id); }
-    function clearContainer(id) { const el = $(id); if (el) el.innerHTML = ''; }
-    function formatNum(v) { return Number(v).toFixed(4); }
-    function formatTime(ts) { const d = new Date(ts); return d.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
-    function downloadBase64Image(b64, name) { const a=document.createElement('a'); a.href=b64; a.download=name; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+// ---------- 全局状态 ----------
+let currentWeights = {};
+let batchProcessedData = [];
+let history = [];
+const DEFAULT_WEIGHTS = { aesthetic: 0.25, saliency: 0.25, composition: 0.20, subject: 0.18, technical: 0.12, area_prior: 0.00 };
+const MAX_HISTORY = 20;
+let cropper = null;
+let adjustParams = { brightness: 0, contrast: 0, saturation: 0, hue: 0 };
+let rawImageData = null;
+let radarChartInstance = null;
+let lastSingleResult = null;
+const subLabels = { aesthetic:'美学', saliency:'显著性', composition:'构图', subject:'主体', technical:'技术', area_prior:'面积' };
+const subKeys = ['aesthetic','saliency','composition','subject','technical','area_prior'];
 
-    // ---------- 权重面板 ----------
-    function renderWeightSliders(weights) {
-        const panel = $('weightsPanel');
-        panel.innerHTML = '';
-        const keys = ['aesthetic','saliency','composition','subject','technical','area_prior'];
-        const labels = {
-            aesthetic: '美学',
-            saliency: '显著性',
-            composition: '构图',
-            subject: '主体',
-            technical: '技术',
-            area_prior: '面积先验'
-        };
-        keys.forEach(key => {
-            const div = document.createElement('div');
-            div.className = 'weight-slider';
-            const val = (weights && weights[key] !== undefined) ? weights[key] : 0;
-            div.innerHTML = `
-                <label>${labels[key]}</label>
-                <input type="range" id="slider_${key}" min="0" max="1" step="0.01" value="${val}">
-                <span id="val_${key}">${Number(val).toFixed(2)}</span>
-            `;
-            const slider = div.querySelector('input');
-            slider.addEventListener('input', (e) => {
-                const v = parseFloat(e.target.value);
-                div.querySelector('span').textContent = v.toFixed(2);
-                currentWeights[key] = v;
-            });
-            panel.appendChild(div);
+// ---------- 权重面板 ----------
+function renderWeightSliders(weights) {
+    const panel = $('weightsPanel');
+    panel.innerHTML = '';
+    const keys = ['aesthetic','saliency','composition','subject','technical','area_prior'];
+    const labels = { aesthetic: '美学', saliency: '显著性', composition: '构图', subject: '主体', technical: '技术', area_prior: '面积先验' };
+    keys.forEach(key => {
+        const div = document.createElement('div');
+        div.className = 'weight-slider';
+        const val = (weights && weights[key] !== undefined) ? weights[key] : 0;
+        div.innerHTML = `
+            <label>${labels[key]}</label>
+            <input type="range" id="slider_${key}" min="0" max="1" step="0.01" value="${val}">
+            <span id="val_${key}">${Number(val).toFixed(2)}</span>
+        `;
+        const slider = div.querySelector('input');
+        slider.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            div.querySelector('span').textContent = v.toFixed(2);
+            currentWeights[key] = v;
         });
-    }
+        panel.appendChild(div);
+    });
+}
 
-    async function loadConfig() {
-        try {
-            const resp = await fetch('/api/config');
-            if (!resp.ok) throw new Error('配置加载失败');
-            const config = await resp.json();
-            const w = config.fusion?.weights || DEFAULT_WEIGHTS;
-            const filtered = {};
-            ['aesthetic','saliency','composition','subject','technical','area_prior'].forEach(k => {
-                filtered[k] = w[k] !== undefined ? w[k] : DEFAULT_WEIGHTS[k];
-            });
-            currentWeights = filtered;
-            renderWeightSliders(currentWeights);
-        } catch (err) {
-            console.warn('配置加载失败，使用默认权重', err);
-            currentWeights = { ...DEFAULT_WEIGHTS };
-            renderWeightSliders(currentWeights);
-        }
-    }
-
-    async function applyWeights() {
-        const btn = $('applyWeightsBtn');
-        const status = $('weightStatusMsg');
-        btn.disabled = true;
-        status.innerHTML = '<span class="loading"></span> 更新中...';
-        try {
-            const resp = await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ weights: currentWeights })
-            });
-            if (!resp.ok) throw new Error('权重更新失败');
-            status.textContent = '✅ 已生效';
-            setTimeout(() => { status.textContent = ''; }, 1800);
-        } catch (err) {
-            status.textContent = '❌ 更新失败: ' + err.message;
-        } finally {
-            btn.disabled = false;
-        }
-    }
-
-    function resetWeights() {
+async function loadConfig() {
+    try {
+        const resp = await fetch('/api/config');
+        if (!resp.ok) throw new Error('配置加载失败');
+        const config = await resp.json();
+        const w = config.fusion?.weights || DEFAULT_WEIGHTS;
+        const filtered = {};
+        ['aesthetic','saliency','composition','subject','technical','area_prior'].forEach(k => {
+            filtered[k] = w[k] !== undefined ? w[k] : DEFAULT_WEIGHTS[k];
+        });
+        currentWeights = filtered;
+        renderWeightSliders(currentWeights);
+    } catch (err) {
+        console.warn('配置加载失败，使用默认权重', err);
         currentWeights = { ...DEFAULT_WEIGHTS };
         renderWeightSliders(currentWeights);
-        $('weightStatusMsg').textContent = '↺ 已重置';
-        setTimeout(() => { $('weightStatusMsg').textContent = ''; }, 1200);
     }
+}
 
-    // ---------- 历史管理 ----------
-    function addHistory(type, filename, data) {
-        history.unshift({ type, filename, data, timestamp: Date.now() });
-        if (history.length > MAX_HISTORY) history.pop();
-        renderHistory();
+async function applyWeights() {
+    const btn = $('applyWeightsBtn');
+    const status = $('weightStatusMsg');
+    btn.disabled = true;
+    status.innerHTML = '<span class="loading"></span> 更新中...';
+    try {
+        const resp = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ weights: currentWeights })
+        });
+        if (!resp.ok) throw new Error('权重更新失败');
+        status.textContent = '✅ 已生效';
+        setTimeout(() => { status.textContent = ''; }, 1800);
+    } catch (err) {
+        status.textContent = '❌ 更新失败: ' + err.message;
+    } finally {
+        btn.disabled = false;
     }
+}
 
-    function renderHistory() {
-        const container = $('historyContainer');
-        if (!history.length) {
-            container.innerHTML = '<div class="history-empty">暂无处理记录</div>';
-            return;
-        }
-        let html = '<div class="history-list">';
-        history.forEach((item, idx) => {
-            const isBatch = item.data && item.data.results && Array.isArray(item.data.results);
-            let badgeText;
-            if (isBatch) {
-                const count = item.data.results.length;
-                let avgScore = 0;
-                const validScores = item.data.results.filter(r => r.score !== undefined && r.score !== null).map(r => r.score);
-                if (validScores.length) {
-                    avgScore = validScores.reduce((a,b) => a + b, 0) / validScores.length;
-                    badgeText = `批量 ${count}张 · 均分 ${avgScore.toFixed(4)}`;
-                } else {
-                    badgeText = `批量 ${count}张`;
-                }
+function resetWeights() {
+    currentWeights = { ...DEFAULT_WEIGHTS };
+    renderWeightSliders(currentWeights);
+    $('weightStatusMsg').textContent = '↺ 已重置';
+    setTimeout(() => { $('weightStatusMsg').textContent = ''; }, 1200);
+}
+
+// ---------- 历史管理 ----------
+function addHistory(type, filename, data) {
+    history.unshift({ type, filename, data, timestamp: Date.now() });
+    if (history.length > MAX_HISTORY) history.pop();
+    renderHistory();
+}
+
+function renderHistory() {
+    const container = $('historyContainer');
+    if (!history.length) {
+        container.innerHTML = '<div class="history-empty">暂无处理记录</div>';
+        return;
+    }
+    let html = '<div class="history-list">';
+    history.forEach((item, idx) => {
+        const isBatch = item.data && item.data.results && Array.isArray(item.data.results);
+        let badgeText;
+        if (isBatch) {
+            const count = item.data.results.length;
+            let avgScore = 0;
+            const validScores = item.data.results.filter(r => r.score !== undefined && r.score !== null).map(r => r.score);
+            if (validScores.length) {
+                avgScore = validScores.reduce((a,b) => a + b, 0) / validScores.length;
+                badgeText = `批量 ${count}张 · 均分 ${avgScore.toFixed(4)}`;
             } else {
-                const score = item.data?.score ?? '--';
-                badgeText = `得分 ${typeof score === 'number' ? score.toFixed(4) : score}`;
+                badgeText = `批量 ${count}张`;
             }
-            const name = item.filename || '未命名';
-            const typeLabel = item.type === 'single' ? '单图' : '批量';
-            html += `
-                <div class="history-item" data-idx="${idx}">
-                    <div class="left">
-                        <span class="name">${name}</span>
-                        <span class="meta">${typeLabel} · ${formatTime(item.timestamp)}</span>
-                        <span class="badge">${badgeText}</span>
-                    </div>
-                    <button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" data-view="${idx}">查看</button>
-                </div>
-            `;
-        });
-        html += '</div>';
-        container.innerHTML = html;
-        container.querySelectorAll('[data-view]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const idx = parseInt(btn.getAttribute('data-view'));
-                const item = history[idx];
-                if (!item) return;
-                const modal = $('detailModal');
-                const img = $('modalCropImage');
-                const info = $('modalInfo');
-                const d = item.data;
-                if (d && d.results && Array.isArray(d.results)) {
-                    img.style.display = 'none';
-                    let htmlContent = `<div><strong>📦 批量结果 (${d.results.length}张)</strong></div>`;
-                    d.results.forEach((res, i) => {
-                        const cropSrc = res.crop_image || '';
-                        const filename = res.filename || `图片 ${i+1}`;
-                        const bbox = (res.bbox || []).join(', ');
-                        const score = (res.score !== undefined && res.score !== null) ? res.score.toFixed(4) : '--';
-                        const explanation = res.explanation || '';
-                        htmlContent += `
-                            <div class="batch-detail-item">
-                                <img src="${cropSrc}" alt="${filename}" loading="lazy" onerror="this.style.display='none'">
-                                <div class="info">
-                                    <div class="fname">${filename}</div>
-                                    <div>裁剪框: [${bbox}]</div>
-                                    <div>得分: ${score}</div>
-                                    <div style="font-size:12px;opacity:0.7;">${explanation}</div>
-                                </div>
-                            </div>
-                        `;
-                    });
-                    info.innerHTML = htmlContent;
-                } else {
-                    img.style.display = 'block';
-                    if (d && d.crop_image) img.src = d.crop_image;
-                    else img.src = '';
-                    info.innerHTML = `
-                        <strong>${item.filename}</strong><br>
-                        类型: ${item.type === 'single' ? '单图' : '批量'}<br>
-                        裁剪框: [${(d?.bbox||[]).join(', ')}]<br>
-                        得分: ${typeof d?.score === 'number' ? d.score.toFixed(4) : '--'}<br>
-                        说明: ${d?.explanation || '无'}<br>
-                        <span style="font-size:12px;opacity:0.4;">${formatTime(item.timestamp)}</span>
-                    `;
-                }
-                modal.classList.add('active');
-            });
-        });
-    }
-
-    function clearHistory() {
-        history = [];
-        renderHistory();
-    }
-
-    // ---------- 子分数条形图 ----------
-    function renderSubScoreBars(subScores) {
-        if (!subScores) return '';
-        const keys = ['aesthetic','saliency','composition','subject','technical','area_prior'];
-        const labels = { aesthetic:'美学', saliency:'显著性', composition:'构图', subject:'主体', technical:'技术', area_prior:'面积' };
-        let html = '<div class="subscore-bars">';
-        keys.forEach(key => {
-            const val = subScores[key] ?? 0;
-            const pct = Math.min(100, val*100);
-            html += `
-                <div class="subscore-row">
-                    <span class="label">${labels[key]}</span>
-                    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;"></div></div>
-                    <span class="value">${(val*100).toFixed(0)}%</span>
-                </div>
-            `;
-        });
-        html += '</div>';
-        return html;
-    }
-
-    // ---------- 单图处理 ----------
-    async function processSingleImage(file) {
-        const resultDiv = $('singleResult');
-        clearContainer('singleResult');
-        resultDiv.innerHTML = '<div style="padding:20px;text-align:center;"><span class="loading"></span> 处理中...</div>';
-        const formData = new FormData();
-        formData.append('image', file);
-        try {
-            const resp = await fetch('/api/crop', { method: 'POST', body: formData });
-            if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || '处理失败'); }
-            const data = await resp.json();
-            addHistory('single', file.name, data);
-            window._lastSingleResult = data;
-            // 保存原始无框图像用于手动精修
-            rawImageData = data.raw_image || data.original_image; // fallback
-            // 保存带框图像用于智能裁剪展示（不用于手动）
-            currentImageData = data.original_image;
-            // 如果手动精修 tab 当前是激活状态，立即初始化 cropper
-            const manualTab = document.querySelector('#singleTabs .tab-btn[data-tab="manual"]');
-            if (manualTab && manualTab.classList.contains('active')) {
-                initCropper(rawImageData);
-            }
-            // 自动更新可视化（包含雷达图）
-            updateVisualization(data);
-
-            let html = `
-                <div class="result-grid">
-                    <div class="result-card">
-                        <img src="${data.original_image}" alt="原图+框" loading="lazy">
-                        <div class="info">🎯 最佳裁剪框 · 得分: ${formatNum(data.score)}</div>
-                    </div>
-                    <div class="result-card">
-                        <img src="${data.crop_image}" alt="最佳裁剪" loading="lazy">
-                        <div class="info">✂️ 最佳裁剪结果</div>
-                    </div>
-                </div>
-                ${renderSubScoreBars(data.sub_scores)}
-                <h3 style="margin-top:16px;">🏆 Top-3 候选裁剪</h3>
-                <div class="candidate-list" id="candidateList"></div>
-            `;
-            resultDiv.innerHTML = html;
-            const container = $('candidateList');
-            if (data.top_candidates && data.top_candidates.length) {
-                data.top_candidates.forEach((cand, idx) => {
-                    const div = document.createElement('div');
-                    div.className = 'candidate-item';
-                    div.innerHTML = `
-                        <img src="${cand.crop_base64 || ''}" alt="候选${idx+1}" loading="lazy">
-                        <div class="score-label">得分: ${formatNum(cand.score)}</div>
-                        <button class="btn btn-secondary" style="margin-top:4px;padding:4px 10px;font-size:12px;" data-base64="${cand.crop_base64 || ''}" data-idx="${idx}">⬇ 下载</button>
-                    `;
-                    container.appendChild(div);
-                });
-                container.querySelectorAll('[data-base64]').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        const b64 = btn.getAttribute('data-base64');
-                        if (b64) downloadBase64Image(b64, `candidate_${btn.getAttribute('data-idx')}.jpg`);
-                    });
-                });
-            } else {
-                container.innerHTML = '<p style="opacity:0.5;">无候选数据</p>';
-            }
-        } catch (err) {
-            resultDiv.innerHTML = `<div class="error">错误: ${err.message}</div>`;
-            console.error(err);
+        } else {
+            const score = item.data?.score ?? '--';
+            badgeText = `得分 ${typeof score === 'number' ? score.toFixed(4) : score}`;
         }
-    }
-
-    // ---------- 批量处理 ----------
-    async function processBatch(files) {
-        const container = $('batchResult');
-        clearContainer('batchResult');
-        container.innerHTML = '<div style="padding:20px;text-align:center;"><span class="loading"></span> 批量处理中...</div>';
-        const formData = new FormData();
-        for (const f of files) formData.append('images', f);
-        try {
-            const resp = await fetch('/api/batch', { method: 'POST', body: formData });
-            if (!resp.ok) throw new Error('批量处理失败');
-            const data = await resp.json();
-            batchProcessedData = data.results || [];
-            renderBatchResults(batchProcessedData);
-            if (batchProcessedData.length) {
-                addHistory('batch', `批量 (${batchProcessedData.length}张)`, { results: batchProcessedData });
-            }
-        } catch (err) {
-            container.innerHTML = `<div class="error">批量处理错误: ${err.message}</div>`;
-        }
-    }
-
-    // ---------- 批量结果渲染 ----------
-    function renderBatchResults(results) {
-        const container = $('batchResult');
-        if (!results || !results.length) {
-            container.innerHTML = '<p style="opacity:0.4;text-align:center;padding:20px;">暂无结果</p>';
-            return;
-        }
-        const subLabels = { aesthetic:'美学', saliency:'显著性', composition:'构图', subject:'主体', technical:'技术', area_prior:'面积' };
-        const subKeys = ['aesthetic','saliency','composition','subject','technical','area_prior'];
-        let html = `<div style="margin-bottom:12px;font-weight:500;opacity:0.7;">共 ${results.length} 张</div><div id="batchCardsWrapper">`;
-        results.forEach((item, idx) => {
-            if (item.error) {
-                html += `<div class="batch-result-card" style="border-left:4px solid #b35a4a;"><div style="flex:1;"><strong>${item.filename||'未命名'}</strong> <span class="error" style="font-size:13px;padding:2px 10px;">错误: ${item.error}</span></div></div>`;
-                return;
-            }
-            if (item.top_candidates && Array.isArray(item.top_candidates)) {
-                item.top_candidates.sort((a, b) => (b.score || 0) - (a.score || 0));
-            }
-            const candidates = item.top_candidates || [];
-            const hasCandidates = candidates.length > 0;
-            const defaultImg = hasCandidates ? candidates[0].crop_base64 : item.crop_image;
-            const defaultScore = hasCandidates ? candidates[0].score : item.score;
-            const defaultBbox = hasCandidates ? (candidates[0].bbox || item.bbox) : item.bbox;
-            const defaultOrig = hasCandidates ? (candidates[0].original_with_bbox || item.original_image) : item.original_image;
-            const scoreId = `score_${idx}`;
-            const bboxId = `bbox_${idx}`;
-            const cropImgId = `cropImg_${idx}`;
-            const origImgId = `origImg_${idx}`;
-            let subHtml = '';
-            if (item.sub_scores && typeof item.sub_scores === 'object') {
-                const parts = [];
-                subKeys.forEach(key => {
-                    const val = item.sub_scores[key];
-                    if (val !== undefined && val !== null) {
-                        const pct = (val * 100).toFixed(0);
-                        parts.push(`<span class="item"><span class="dot"></span>${subLabels[key]||key}: <span class="val">${pct}%</span></span>`);
-                    }
-                });
-                if (parts.length) subHtml = `<div class="batch-subscore-compact">${parts.join('')}</div>`;
-            }
-            let candButtons = '';
-            if (hasCandidates) {
-                const maxShow = Math.min(candidates.length, 5);
-                for (let i = 0; i < maxShow; i++) {
-                    const active = i === 0 ? 'active' : '';
-                    candButtons += `<button class="cand-btn ${active}" data-item-idx="${idx}" data-cand-idx="${i}">Top${i+1}</button>`;
-                }
-            }
-            html += `
-                <div class="batch-result-card" data-item-idx="${idx}">
-                    <div class="batch-thumbs">
-                        <div class="batch-thumb-wrapper">
-                            <img id="${origImgId}" src="${defaultOrig}" alt="原图" loading="lazy" onerror="this.style.display='none'">
-                            <div class="label">📷 原图</div>
-                        </div>
-                        <div class="batch-thumb-wrapper">
-                            <img id="${cropImgId}" src="${defaultImg}" alt="裁剪" loading="lazy" onerror="this.style.display='none'">
-                            <div class="label">✂️ 裁剪</div>
-                            ${candButtons ? `<div class="cand-selector">${candButtons}</div>` : ''}
-                        </div>
-                    </div>
-                    <div class="batch-info">
-                        <div class="top-row">
-                            <span class="fname">${item.filename||'未命名'}</span>
-                            <span class="bbox" id="${bboxId}">框: [${(defaultBbox||[]).join(', ')}]</span>
-                            <span class="score" id="${scoreId}">得分: ${formatNum(defaultScore)}</span>
-                        </div>
-                        ${subHtml}
-                    </div>
-                    <div class="batch-actions">
-                        <button class="btn btn-secondary download-crop-btn" data-item-idx="${idx}">⬇ 下载</button>
-                    </div>
+        const name = item.filename || '未命名';
+        const typeLabel = item.type === 'single' ? '单图' : '批量';
+        html += `
+            <div class="history-item" data-idx="${idx}">
+                <div class="left">
+                    <span class="name">${name}</span>
+                    <span class="meta">${typeLabel} · ${formatTime(item.timestamp)}</span>
+                    <span class="badge">${badgeText}</span>
                 </div>
-            `;
-        });
-        html += `</div><div class="btn-group" style="margin-top:12px;"><button class="btn btn-secondary" id="batchDownloadCropsBtn">📦 批量下载所有裁剪图 (ZIP)</button></div>`;
-        container.innerHTML = html;
-
-        container.querySelectorAll('.cand-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const itemIdx = parseInt(this.getAttribute('data-item-idx'));
-                const candIdx = parseInt(this.getAttribute('data-cand-idx'));
-                const item = results[itemIdx];
-                if (!item || !item.top_candidates || !item.top_candidates[candIdx]) return;
-                const card = this.closest('.batch-result-card');
-                if (!card) return;
-                const origImg = card.querySelector(`#origImg_${itemIdx}`);
-                const cropImg = card.querySelector(`#cropImg_${itemIdx}`);
-                const scoreSpan = card.querySelector(`#score_${itemIdx}`);
-                const bboxSpan = card.querySelector(`#bbox_${itemIdx}`);
-                const cand = item.top_candidates[candIdx];
-                if (origImg) origImg.src = cand.original_with_bbox || item.original_image;
-                if (cropImg) cropImg.src = cand.crop_base64 || '';
-                if (scoreSpan) scoreSpan.textContent = `得分: ${formatNum(cand.score)}`;
-                if (bboxSpan) bboxSpan.textContent = `框: [${(cand.bbox || item.bbox || []).join(', ')}]`;
-                const siblings = this.parentElement.querySelectorAll('.cand-btn');
-                siblings.forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-            });
-        });
-
-        container.querySelectorAll('.download-crop-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const itemIdx = parseInt(this.getAttribute('data-item-idx'));
-                const item = results[itemIdx];
-                if (!item) return;
-                const card = this.closest('.batch-result-card');
-                const cropImg = card ? card.querySelector(`#cropImg_${itemIdx}`) : null;
-                let src = cropImg ? cropImg.src : (item.crop_image || '');
-                if (!src || src === '') { alert('该图片无裁剪图数据'); return; }
-                downloadBase64Image(src, `crop_${item.filename || itemIdx}.jpg`);
-            });
-        });
-
-        const zipBtn = $('batchDownloadCropsBtn');
-        if (zipBtn) {
-            zipBtn.addEventListener('click', () => batchDownloadCrops(results));
-        }
-    }
-
-    async function batchDownloadCrops(results) {
-        const wrapper = $('batchCardsWrapper');
-        if (!wrapper) { alert('没有可下载的裁剪图'); return; }
-        const cards = wrapper.querySelectorAll('.batch-result-card');
-        const validItems = [];
-        cards.forEach(card => {
-            const idx = parseInt(card.getAttribute('data-item-idx'));
-            const item = results[idx];
+                <button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" data-view="${idx}">查看</button>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    container.querySelectorAll('[data-view]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = parseInt(btn.getAttribute('data-view'));
+            const item = history[idx];
             if (!item) return;
-            const cropImg = card.querySelector(`#cropImg_${idx}`);
-            const src = cropImg ? cropImg.src : (item.crop_image || '');
-            if (src && src !== '') validItems.push({ ...item, crop_image: src });
+            const modal = $('detailModal');
+            const img = $('modalCropImage');
+            const info = $('modalInfo');
+            const d = item.data;
+            if (d && d.results && Array.isArray(d.results)) {
+                img.style.display = 'none';
+                let htmlContent = `<div><strong>📦 批量结果 (${d.results.length}张)</strong></div>`;
+                d.results.forEach((res, i) => {
+                    const cropSrc = res.crop_image || '';
+                    const filename = res.filename || `图片 ${i+1}`;
+                    const bbox = (res.bbox || []).join(', ');
+                    const score = (res.score !== undefined && res.score !== null) ? res.score.toFixed(4) : '--';
+                    const explanation = res.explanation || '';
+                    htmlContent += `
+                        <div class="batch-detail-item">
+                            <img src="${cropSrc}" alt="${filename}" loading="lazy" onerror="this.style.display='none'">
+                            <div class="info">
+                                <div class="fname">${filename}</div>
+                                <div>裁剪框: [${bbox}]</div>
+                                <div>得分: ${score}</div>
+                                <div style="font-size:12px;opacity:0.7;">${explanation}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                info.innerHTML = htmlContent;
+            } else {
+                img.style.display = 'block';
+                if (d && d.crop_image) img.src = d.crop_image;
+                else img.src = '';
+                info.innerHTML = `
+                    <strong>${item.filename}</strong><br>
+                    类型: ${item.type === 'single' ? '单图' : '批量'}<br>
+                    裁剪框: [${(d?.bbox||[]).join(', ')}]<br>
+                    得分: ${typeof d?.score === 'number' ? d.score.toFixed(4) : '--'}<br>
+                    说明: ${d?.explanation || '无'}<br>
+                    <span style="font-size:12px;opacity:0.4;">${formatTime(item.timestamp)}</span>
+                `;
+            }
+            modal.classList.add('active');
         });
-        if (!validItems.length) { alert('没有可下载的裁剪图'); return; }
-        try {
-            const resp = await fetch('/api/batch_download', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ results: validItems })
-            });
-            if (!resp.ok) throw new Error('批量下载失败');
-            const blob = await resp.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = 'crops.zip';
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch (err) {
-            alert('批量下载失败: ' + err.message);
+    });
+}
+
+function clearHistory() {
+    history = [];
+    renderHistory();
+}
+
+// ---------- 子分数条形图 ----------
+function renderSubScoreBars(subScores) {
+    if (!subScores) return '';
+    const labels = { aesthetic:'美学', saliency:'显著性', composition:'构图', subject:'主体', technical:'技术', area_prior:'面积' };
+    let html = '<div class="subscore-bars">';
+    subKeys.forEach(key => {
+        const val = subScores[key] ?? 0;
+        const pct = Math.min(100, val*100);
+        html += `
+            <div class="subscore-row">
+                <span class="label">${labels[key]}</span>
+                <div class="bar-track"><div class="bar-fill" style="width:${pct}%;"></div></div>
+                <span class="value">${(val*100).toFixed(0)}%</span>
+            </div>
+        `;
+    });
+    html += '</div>';
+    return html;
+}
+
+// ---------- 导出报告 ----------
+async function exportReport(result) {
+    if (!result) { alert('没有可导出的结果'); return; }
+    try {
+        const resp = await fetch('/api/export_report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ result })
+        });
+        if (!resp.ok) throw new Error('导出报告失败');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'report.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('导出失败: ' + (err.message || err));
+    }
+}
+
+async function exportReportPDF(result) {
+    if (!result) { alert('没有可导出的结果'); return; }
+    try {
+        const resp = await fetch('/api/export_report_pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ result })
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(()=>null);
+            throw new Error(err?.error || resp.statusText || '导出失败');
+        }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'report.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('导出为 PDF 失败: ' + (err.message || err));
+    }
+}
+
+// ---------- 模态框 ----------
+function initModal() {
+    const modal = $('detailModal');
+    const closeBtn = modal.querySelector('.modal-close');
+    closeBtn.addEventListener('click', () => modal.classList.remove('active'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') modal.classList.remove('active'); });
+}
+
+// ---------- 可视化诊断（雷达图） ----------
+function updateVisualization(data) {
+    if (!data) return;
+    
+    const salImg = $('vizSaliency');
+    const objImg = $('vizObjects');
+    const salPlaceholder = $('saliencyPlaceholder');
+    const objPlaceholder = $('objectsPlaceholder');
+
+    if (data.saliency_vis) {
+        salImg.src = data.saliency_vis;
+        salImg.style.display = 'block';
+        if (salPlaceholder) salPlaceholder.style.display = 'none';
+    } else {
+        salImg.style.display = 'none';
+        if (salPlaceholder) {
+            salPlaceholder.style.display = 'block';
+            salPlaceholder.textContent = '⏳ 等待后端支持';
         }
     }
 
-    // ---------- 导出 ----------
-    async function exportResults(format) {
-        if (!batchProcessedData.length) { alert('没有批量处理结果可导出'); return; }
-        const exportData = batchProcessedData.map(item => ({
-            filename: item.filename || 'unknown',
-            bbox: item.bbox || [],
-            score: item.score || 0,
-            error: item.error || null
-        }));
-        try {
-            const resp = await fetch('/api/export', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ results: exportData, format })
-            });
-            if (!resp.ok) throw new Error('导出失败');
-            const blob = await resp.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `predictions.${format === 'csv' ? 'csv' : 'json'}`;
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch (err) {
-            alert('导出失败: ' + err.message);
+    if (data.object_vis) {
+        objImg.src = data.object_vis;
+        objImg.style.display = 'block';
+        if (objPlaceholder) objPlaceholder.style.display = 'none';
+    } else {
+        objImg.style.display = 'none';
+        if (objPlaceholder) {
+            objPlaceholder.style.display = 'block';
+            objPlaceholder.textContent = '⏳ 等待后端支持';
         }
     }
 
-    function clearBatchResults() {
-        batchProcessedData = [];
-        $('batchResult').innerHTML = '<p style="opacity:0.3;text-align:center;padding:20px;">已清空</p>';
-    }
+    const ctx = $('radarChart');
+    if (!ctx) return;
+    const chartCtx = ctx.getContext('2d');
+    if (radarChartInstance) radarChartInstance.destroy();
+    
+    const scores = data.sub_scores || { aesthetic:0.5, saliency:0.5, composition:0.5, subject:0.5, technical:0.5, area_prior:0.5 };
+    radarChartInstance = new Chart(chartCtx, {
+        type: 'radar',
+        data: {
+            labels: ['美学', '显著性', '构图', '主体', '技术', '面积先验'],
+            datasets: [{
+                label: '评分',
+                data: [scores.aesthetic||0, scores.saliency||0, scores.composition||0, scores.subject||0, scores.technical||0, scores.area_prior||0],
+                backgroundColor: 'rgba(127,165,185,0.2)',
+                borderColor: '#7fa5b9',
+                pointBackgroundColor: '#7fa5b9',
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: { r: { beginAtZero: true, max: 1, ticks: { stepSize: 0.2 } } },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
 
-    // ---------- 模态框 ----------
-    function initModal() {
-        const modal = $('detailModal');
-        const closeBtn = modal.querySelector('.modal-close');
-        closeBtn.addEventListener('click', () => modal.classList.remove('active'));
-        modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') modal.classList.remove('active'); });
+// ---------- 手动精修 ----------
+function initCropper(imageSrc) {
+    const img = document.getElementById('manualImage');
+    if (!imageSrc) {
+        img.src = '';
+        return;
     }
+    img.src = imageSrc;
+    img.onload = function() {
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+        cropper = new Cropper(img, {
+            aspectRatio: NaN,
+            viewMode: 1,
+            dragMode: 'crop',
+            autoCropArea: 0.65,
+            responsive: true,
+            restore: false,
+            guides: true,
+            center: true,
+            highlight: false,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            toggleDragModeOnDblclick: false,
+        });
+        applyRatio(getActiveRatio());
+    };
+    img.onerror = function() { alert('图片加载失败，请重新上传。'); };
+}
 
-    // ============================================================
-    //  【手动精修模块】使用原始无框图像
-    // ============================================================
-    function initCropper(imageSrc) {
+function getActiveRatio() {
+    const active = document.querySelector('#ratioBtns .ratio-btn.active');
+    return active ? active.dataset.ratio : 'free';
+}
+
+function applyRatio(ratio) {
+    if (!cropper) return;
+    let aspect = NaN;
+    if (ratio === '1:1') aspect = 1;
+    else if (ratio === '4:3') aspect = 4/3;
+    else if (ratio === '16:9') aspect = 16/9;
+    else if (ratio === '3:2') aspect = 3/2;
+    else if (ratio === 'original') {
         const img = document.getElementById('manualImage');
-        if (!imageSrc) {
-            img.src = '';
-            return;
+        if (img.naturalWidth && img.naturalHeight) {
+            aspect = img.naturalWidth / img.naturalHeight;
         }
-        img.src = imageSrc;
+    }
+    cropper.setAspectRatio(aspect);
+}
+
+function resetCrop() {
+    if (cropper) {
+        cropper.reset();
+        cropper.clear();
+        cropper.crop();
+    }
+}
+
+function applyAdjustmentsToImageData(imageData, params) {
+    const data = imageData.data;
+    const len = data.length;
+    const brightness = params.brightness / 100;
+    const saturation = params.saturation / 100;
+    const hue = params.hue;
+    const contrastFactor = 1 + params.contrast / 100;
+
+    for (let i = 0; i < len; i += 4) {
+        let r = data[i];
+        let g = data[i+1];
+        let b = data[i+2];
+
+        if (hue !== 0) {
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            const delta = max - min;
+            let h = 0, s = 0, v = max;
+            if (max !== 0) s = delta / max;
+            if (delta !== 0) {
+                if (max === r) h = (g - b) / delta;
+                else if (max === g) h = 2 + (b - r) / delta;
+                else h = 4 + (r - g) / delta;
+                h *= 60;
+                if (h < 0) h += 360;
+            }
+            h = (h + hue) % 360;
+            if (h < 0) h += 360;
+            const c = v * s;
+            const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+            const m = v - c;
+            let r1, g1, b1;
+            if (h < 60) { r1 = c; g1 = x; b1 = 0; }
+            else if (h < 120) { r1 = x; g1 = c; b1 = 0; }
+            else if (h < 180) { r1 = 0; g1 = c; b1 = x; }
+            else if (h < 240) { r1 = 0; g1 = x; b1 = c; }
+            else if (h < 300) { r1 = x; g1 = 0; b1 = c; }
+            else { r1 = c; g1 = 0; b1 = x; }
+            r = (r1 + m) * 255;
+            g = (g1 + m) * 255;
+            b = (b1 + m) * 255;
+        }
+
+        if (saturation !== 0) {
+            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            const factorSat = 1 + saturation;
+            r = gray + (r - gray) * factorSat;
+            g = gray + (g - gray) * factorSat;
+            b = gray + (b - gray) * factorSat;
+        }
+
+        r = (r - 128) * contrastFactor + 128;
+        g = (g - 128) * contrastFactor + 128;
+        b = (b - 128) * contrastFactor + 128;
+
+        if (brightness !== 0) {
+            r += brightness * 128;
+            g += brightness * 128;
+            b += brightness * 128;
+        }
+
+        data[i] = Math.min(255, Math.max(0, Math.round(r)));
+        data[i+1] = Math.min(255, Math.max(0, Math.round(g)));
+        data[i+2] = Math.min(255, Math.max(0, Math.round(b)));
+    }
+}
+
+function getCroppedImageData() {
+    if (!cropper) return null;
+    const data = cropper.getData();
+    const img = document.getElementById('manualImage');
+    if (!img.complete || !img.naturalWidth) return null;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const srcWidth = img.naturalWidth;
+    const srcHeight = img.naturalHeight;
+    const displayWidth = img.width;
+    const displayHeight = img.height;
+    const scaleX = srcWidth / displayWidth;
+    const scaleY = srcHeight / displayHeight;
+    const cropX = data.x * scaleX;
+    const cropY = data.y * scaleY;
+    const cropW = data.width * scaleX;
+    const cropH = data.height * scaleY;
+    canvas.width = cropW;
+    canvas.height = cropH;
+    ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+    const imageData = ctx.getImageData(0, 0, cropW, cropH);
+    applyAdjustmentsToImageData(imageData, adjustParams);
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.92);
+}
+
+function updateManualImage() {
+    if (!rawImageData) return;
+    const img = document.getElementById('manualImage');
+    const tempImg = new Image();
+    tempImg.onload = function() {
+        const canvas = document.createElement('canvas');
+        canvas.width = tempImg.width;
+        canvas.height = tempImg.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(tempImg, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        applyAdjustmentsToImageData(imageData, adjustParams);
+        ctx.putImageData(imageData, 0, 0);
+        const adjustedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        img.src = adjustedDataUrl;
         img.onload = function() {
             if (cropper) {
                 cropper.destroy();
@@ -940,414 +1019,841 @@
             });
             applyRatio(getActiveRatio());
         };
-        img.onerror = function() { alert('图片加载失败，请重新上传。'); };
-    }
+    };
+    tempImg.src = rawImageData;
+}
 
-    function getActiveRatio() {
-        const active = document.querySelector('#ratioBtns .ratio-btn.active');
-        return active ? active.dataset.ratio : 'free';
-    }
+function resetAdjustments() {
+    adjustParams = { brightness: 0, contrast: 0, saturation: 0, hue: 0 };
+    ['brightness','contrast','saturation','hue'].forEach(id => {
+        const slider = document.getElementById(id+'Slider');
+        const valSpan = document.getElementById(id+'Val');
+        if (slider) slider.value = 0;
+        if (valSpan) valSpan.textContent = '0';
+    });
+    updateManualImage();
+}
 
-    function applyRatio(ratio) {
-        if (!cropper) return;
-        let aspect = NaN;
-        if (ratio === '1:1') aspect = 1;
-        else if (ratio === '4:3') aspect = 4/3;
-        else if (ratio === '16:9') aspect = 16/9;
-        else if (ratio === '3:2') aspect = 3/2;
-        else if (ratio === 'original') {
-            const img = document.getElementById('manualImage');
-            if (img.naturalWidth && img.naturalHeight) {
-                aspect = img.naturalWidth / img.naturalHeight;
-            }
-        }
-        cropper.setAspectRatio(aspect);
-    }
-
-    function resetCrop() {
-        if (cropper) {
-            cropper.reset();
-            cropper.clear();
-            cropper.crop();
-        }
-    }
-
-    function getCroppedImageData() {
-        if (!cropper) return null;
-        const data = cropper.getData();
-        const image = document.getElementById('manualImage');
-        if (!image.complete || !image.naturalWidth) return null;
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const srcWidth = image.naturalWidth;
-        const srcHeight = image.naturalHeight;
-        const displayWidth = image.width;
-        const displayHeight = image.height;
-        const scaleX = srcWidth / displayWidth;
-        const scaleY = srcHeight / displayHeight;
-        const cropX = data.x * scaleX;
-        const cropY = data.y * scaleY;
-        const cropW = data.width * scaleX;
-        const cropH = data.height * scaleY;
-        canvas.width = cropW;
-        canvas.height = cropH;
-        ctx.drawImage(image, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-        const imageData = ctx.getImageData(0, 0, cropW, cropH);
-        applyAdjustmentsToImageData(imageData, adjustParams);
-        ctx.putImageData(imageData, 0, 0);
-        return canvas.toDataURL('image/jpeg', 0.92);
-    }
-
-    function applyAdjustmentsToImageData(imageData, params) {
-        const data = imageData.data;
-        const len = data.length;
-        const brightness = params.brightness / 100;        // -1 ~ 1
-        const saturation = params.saturation / 100;        // -1 ~ 1
-        const hue = params.hue;                            // -180 ~ 180
-        const contrastFactor = 1 + params.contrast / 100; // 0 ~ 2
-
-        for (let i = 0; i < len; i += 4) {
-            let r = data[i];
-            let g = data[i+1];
-            let b = data[i+2];
-
-        // 1. 色调调整（保持原逻辑）
-            if (hue !== 0) {
-                const max = Math.max(r, g, b);
-                const min = Math.min(r, g, b);
-                const delta = max - min;
-                let h = 0, s = 0, v = max;
-                if (max !== 0) s = delta / max;
-                if (delta !== 0) {
-                    if (max === r) h = (g - b) / delta;
-                    else if (max === g) h = 2 + (b - r) / delta;
-                    else h = 4 + (r - g) / delta;
-                    h *= 60;
-                    if (h < 0) h += 360;
-                }
-                h = (h + hue) % 360;
-                if (h < 0) h += 360;
-                const c = v * s;
-                const x = c * (1 - Math.abs((h / 60) % 2 - 1));
-                const m = v - c;
-                let r1, g1, b1;
-                if (h < 60) { r1 = c; g1 = x; b1 = 0; }
-                else if (h < 120) { r1 = x; g1 = c; b1 = 0; }
-                else if (h < 180) { r1 = 0; g1 = c; b1 = x; }
-                else if (h < 240) { r1 = 0; g1 = x; b1 = c; }
-                else if (h < 300) { r1 = x; g1 = 0; b1 = c; }
-                else { r1 = c; g1 = 0; b1 = x; }
-                r = (r1 + m) * 255;
-                g = (g1 + m) * 255;
-                b = (b1 + m) * 255;
-            }
-
-        // 2. 饱和度调整
-            if (saturation !== 0) {
-                const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                const factorSat = 1 + saturation;
-                r = gray + (r - gray) * factorSat;
-                g = gray + (g - gray) * factorSat;
-                b = gray + (b - gray) * factorSat;
-            }
-
-        // 3. 对比度调整（正确线性系数）
-            r = (r - 128) * contrastFactor + 128;
-            g = (g - 128) * contrastFactor + 128;
-            b = (b - 128) * contrastFactor + 128;
-
-        // 4. 亮度调整
-            if (brightness !== 0) {
-                r += brightness * 128;
-                g += brightness * 128;
-                b += brightness * 128;
-            }
-
-        // 裁剪到有效范围
-            data[i] = Math.min(255, Math.max(0, Math.round(r)));
-            data[i+1] = Math.min(255, Math.max(0, Math.round(g)));
-            data[i+2] = Math.min(255, Math.max(0, Math.round(b)));
-        }
-    }
-
-    // 更新手动精修图像（应用调整参数后重绘）
-    function updateManualImage() {
-        if (!rawImageData) return;
-        const img = document.getElementById('manualImage');
-        // 从原始图像加载并应用调整
-        const tempImg = new Image();
-        tempImg.onload = function() {
-            const canvas = document.createElement('canvas');
-            canvas.width = tempImg.width;
-            canvas.height = tempImg.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(tempImg, 0, 0);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            applyAdjustmentsToImageData(imageData, adjustParams);
-            ctx.putImageData(imageData, 0, 0);
-            const adjustedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
-            img.src = adjustedDataUrl;
-            img.onload = function() {
-                if (cropper) {
-                    cropper.destroy();
-                    cropper = null;
-                }
-                cropper = new Cropper(img, {
-                    aspectRatio: NaN,
-                    viewMode: 1,
-                    dragMode: 'crop',
-                    autoCropArea: 0.65,
-                    responsive: true,
-                    restore: false,
-                    guides: true,
-                    center: true,
-                    highlight: false,
-                    cropBoxMovable: true,
-                    cropBoxResizable: true,
-                    toggleDragModeOnDblclick: false,
-                });
-                applyRatio(getActiveRatio());
-            };
-        };
-        tempImg.src = rawImageData;  // 使用原始图像
-    }
-
-    function resetAdjustments() {
-        adjustParams = { brightness: 0, contrast: 0, saturation: 0, hue: 0 };
-        document.getElementById('brightnessSlider').value = 0;
-        document.getElementById('contrastSlider').value = 0;
-        document.getElementById('saturationSlider').value = 0;
-        document.getElementById('hueSlider').value = 0;
-        document.getElementById('brightnessVal').textContent = '0';
-        document.getElementById('contrastVal').textContent = '0';
-        document.getElementById('saturationVal').textContent = '0';
-        document.getElementById('hueVal').textContent = '0';
-        updateManualImage();
-    }
-
-    function setupManualTab() {
-        document.querySelectorAll('#ratioBtns .ratio-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('#ratioBtns .ratio-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                applyRatio(this.dataset.ratio);
-            });
+function setupManualTab() {
+    document.querySelectorAll('#ratioBtns .ratio-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#ratioBtns .ratio-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            applyRatio(this.dataset.ratio);
         });
+    });
 
-        ['brightness', 'contrast', 'saturation', 'hue'].forEach(id => {
-            const slider = document.getElementById(id+'Slider');
-            const valSpan = document.getElementById(id+'Val');
+    ['brightness', 'contrast', 'saturation', 'hue'].forEach(id => {
+        const slider = document.getElementById(id+'Slider');
+        const valSpan = document.getElementById(id+'Val');
+        if (slider && valSpan) {
             slider.addEventListener('input', function() {
                 const val = parseInt(this.value);
                 valSpan.textContent = val;
                 adjustParams[id] = val;
                 updateManualImage();
             });
-        });
+        }
+    });
 
-        document.getElementById('resetAdjustmentsBtn').addEventListener('click', resetAdjustments);
-        document.getElementById('manualResetBtn').addEventListener('click', resetCrop);
-        document.getElementById('manualDownloadBtn').addEventListener('click', function() {
-            const dataUrl = getCroppedImageData();
-            if (dataUrl) {
-                downloadBase64Image(dataUrl, 'manual_crop.jpg');
-            } else {
-                alert('请先裁剪图片');
+    $('resetAdjustmentsBtn').addEventListener('click', resetAdjustments);
+    $('manualResetBtn').addEventListener('click', resetCrop);
+    $('manualDownloadBtn').addEventListener('click', function() {
+        const dataUrl = getCroppedImageData();
+        if (dataUrl) {
+            downloadBase64Image(dataUrl, 'manual_crop.jpg');
+        } else {
+            alert('请先裁剪图片');
+        }
+    });
+    $('manualApplyOriginalBtn').addEventListener('click', function() {
+        resetAdjustments();
+        if (cropper) {
+            cropper.reset();
+            cropper.clear();
+            cropper.crop();
+        }
+    });
+}
+
+// ---------- 单图处理 ----------
+async function processSingleImage(file) {
+    const resultDiv = $('singleResult');
+    clearContainer('singleResult');
+    resultDiv.innerHTML = '<div style="padding:20px;text-align:center;"><span class="loading"></span> 处理中...</div>';
+    const formData = new FormData();
+    formData.append('image', file);
+    try {
+        const userPrompt = $('userPromptInput') ? $('userPromptInput').value.trim() : '';
+        if (userPrompt) formData.append('user_prompt', userPrompt);
+        try {
+            if (window._convertedClipPromptsSingle && Array.isArray(window._convertedClipPromptsSingle) && window._convertedClipPromptsSingle.length) {
+                formData.append('clip_prompts', JSON.stringify(window._convertedClipPromptsSingle));
             }
-        });
-        document.getElementById('manualApplyOriginalBtn').addEventListener('click', function() {
-            resetAdjustments();
-            if (cropper) {
-                cropper.reset();
-                cropper.clear();
-                cropper.crop();
+        } catch (e) { /* ignore */ }
+    } catch (e) { /* ignore */ }
+    try {
+        const resp = await fetch('/api/crop', { method: 'POST', body: formData });
+        if (!resp.ok) { 
+            const err = await resp.json(); 
+            throw new Error(err.error || '处理失败'); 
+        }
+        const data = await resp.json();
+        addHistory('single', file.name, data);
+        lastSingleResult = data;
+        rawImageData = data.raw_image || data.original_image;
+        
+        const manualTab = document.querySelector('#singleTabs .tab-btn[data-tab="manual"]');
+        if (manualTab && manualTab.classList.contains('active')) {
+            initCropper(rawImageData);
+        }
+        updateVisualization(data);
+
+        let html = `
+            <div class="result-grid">
+                <div class="result-card">
+                    <img src="${data.original_image}" alt="原图+框" loading="lazy">
+                    <div class="info">🎯 最佳裁剪框 · 得分: ${formatNum(data.score)}</div>
+                </div>
+                <div class="result-card">
+                    <img src="${data.crop_image}" alt="最佳裁剪" loading="lazy">
+                    <div class="info">✂️ 最佳裁剪结果</div>
+                </div>
+            </div>
+            ${renderSubScoreBars(data.sub_scores)}
+            <h3 style="margin-top:12px;">📝 裁剪理由</h3>
+            <div class="meta" style="margin-top:6px;">${data.explanation || '无'}</div>
+            <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button id="exportReportBtn" class="btn btn-secondary">📄 导出详细报告 (ZIP)</button>
+                <button id="exportPdfBtn" class="btn btn-secondary">📕 导出详细报告(PDF)</button>
+            </div>
+            <h3 style="margin-top:16px;">🏆 Top-5 候选裁剪</h3>
+            <div class="candidate-list" id="candidateList"></div>
+        `;
+        resultDiv.innerHTML = html;
+
+        $('exportReportBtn').addEventListener('click', () => exportReport(data));
+        $('exportPdfBtn').addEventListener('click', () => exportReportPDF(data));
+
+        const container = $('candidateList');
+        if (data.top_candidates && data.top_candidates.length) {
+            const topList = data.top_candidates.slice(0,5);
+            topList.forEach((cand, idx) => {
+                const div = document.createElement('div');
+                div.className = 'candidate-item';
+                div.setAttribute('data-idx', idx);
+                div.setAttribute('data-src', cand.crop_base64 || cand.crop_image || '');
+                div.innerHTML = `
+                    <img src="${cand.crop_base64 || cand.crop_image || ''}" alt="候选${idx+1}" loading="lazy">
+                    <div class="score-label">得分: ${formatNum(cand.score)}</div>
+                    <div style="margin-top:6px;display:flex;gap:6px;justify-content:center;">
+                        <button class="btn btn-secondary view-cand" style="padding:6px 10px;font-size:12px;" data-idx="${idx}"> 查看</button>
+                        <button class="btn btn-secondary download-cand" style="padding:6px 10px;font-size:12px;" data-base64="${cand.crop_base64 || cand.crop_image || ''}" data-idx="${idx}">⬇ 下载</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+
+            container.querySelectorAll('.view-cand').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(btn.getAttribute('data-idx'));
+                    const parent = btn.closest('.candidate-item');
+                    const src = parent ? parent.getAttribute('data-src') : '';
+                    const modal = $('detailModal');
+                    const img = $('modalCropImage');
+                    const info = $('modalInfo');
+                    img.style.display = 'block';
+                    img.src = src || '';
+                    info.innerHTML = `
+                        <strong>候选 ${idx+1}</strong><br>
+                        得分: ${formatNum((data.top_candidates[idx]||{}).score)}
+                    `;
+                    modal.classList.add('active');
+                });
+            });
+
+            container.querySelectorAll('.download-cand').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const b64 = btn.getAttribute('data-base64');
+                    const idx = btn.getAttribute('data-idx');
+                    if (b64) downloadBase64Image(b64, `candidate_${idx}.jpg`);
+                });
+            });
+        } else {
+            container.innerHTML = '<p style="opacity:0.5;">无候选数据</p>';
+        }
+    } catch (err) {
+        resultDiv.innerHTML = `<div class="error">错误: ${err.message}</div>`;
+        console.error(err);
+    }
+}
+
+// ---------- 批量处理 ----------
+async function processBatch(files) {
+    const container = $('batchResult');
+    clearContainer('batchResult');
+    container.innerHTML = '<div style="padding:20px;text-align:center;"><span class="loading"></span> 批量处理中...</div>';
+    const formData = new FormData();
+    for (const f of files) formData.append('images', f);
+    try {
+        const batchPrompt = $('batchPromptInput') ? $('batchPromptInput').value.trim() : '';
+        if (batchPrompt) formData.append('user_prompt', batchPrompt);
+        try {
+            if (window._convertedClipPromptsBatch && Array.isArray(window._convertedClipPromptsBatch) && window._convertedClipPromptsBatch.length) {
+                formData.append('clip_prompts', JSON.stringify(window._convertedClipPromptsBatch));
             }
-        });
+        } catch (e) { /* ignore */ }
+    } catch (e) { /* ignore */ }
+    try {
+        const resp = await fetch('/api/batch', { method: 'POST', body: formData });
+        if (!resp.ok) throw new Error('批量处理失败');
+        const data = await resp.json();
+        batchProcessedData = data.results || [];
+        renderBatchResults(batchProcessedData);
+        if (batchProcessedData.length) {
+            addHistory('batch', `批量 (${batchProcessedData.length}张)`, { results: batchProcessedData });
+        }
+    } catch (err) {
+        container.innerHTML = `<div class="error">批量处理错误: ${err.message}</div>`;
+    }
+}
+
+// ---------- 批量结果渲染 ----------
+function renderBatchResults(results) {
+    const container = $('batchResult');
+    if (!results || !results.length) {
+        container.innerHTML = '<p style="opacity:0.4;text-align:center;padding:20px;">暂无结果</p>';
+        return;
     }
 
-    // ============================================================
-    //  【可视化诊断】雷达图自动呈现
-    // ============================================================
-    function updateVisualization(data) {
-        const salImg = document.getElementById('vizSaliency');
-        const objImg = document.getElementById('vizObjects');
-        const salPlaceholder = document.getElementById('saliencyPlaceholder');
-        const objPlaceholder = document.getElementById('objectsPlaceholder');
-
-        if (data.saliency_vis) {
-            salImg.src = data.saliency_vis;
-            salImg.style.display = 'block';
-            salPlaceholder.style.display = 'none';
-        } else {
-            if (data.original_image) {
-                salImg.src = data.original_image;
-                salImg.style.display = 'block';
-                salPlaceholder.style.display = 'none';
-                salPlaceholder.textContent = '（热力图需后端支持）';
-                salPlaceholder.style.display = 'block';
-                salPlaceholder.style.color = 'rgba(30,47,58,0.3)';
-                salPlaceholder.style.fontSize = '12px';
-                salPlaceholder.style.padding = '4px';
-            } else {
-                salImg.style.display = 'none';
-                salPlaceholder.style.display = 'block';
-                salPlaceholder.textContent = '⏳ 等待后端支持';
+    let html = `<div style="margin-bottom:12px;font-weight:500;opacity:0.7;">共 ${results.length} 张</div><div id="batchCardsWrapper">`;
+    
+    results.forEach((item, idx) => {
+        if (item.error) {
+            html += `<div class="batch-result-card" style="border-left:4px solid #b35a4a;"><div style="flex:1;"><strong>${item.filename||'未命名'}</strong> <span class="error" style="font-size:13px;padding:2px 10px;">错误: ${item.error}</span></div></div>`;
+            return;
+        }
+        
+        if (item.top_candidates && Array.isArray(item.top_candidates)) {
+            item.top_candidates.sort((a, b) => (b.score || 0) - (a.score || 0));
+        }
+        const candidates = item.top_candidates || [];
+        const hasCandidates = candidates.length > 0;
+        const defaultImg = hasCandidates ? candidates[0].crop_base64 : item.crop_image;
+        const defaultScore = hasCandidates ? candidates[0].score : item.score;
+        const defaultBbox = hasCandidates ? (candidates[0].bbox || item.bbox) : item.bbox;
+        const defaultOrig = hasCandidates ? (candidates[0].original_with_bbox || item.original_image) : item.original_image;
+        const scoreId = `score_${idx}`;
+        const bboxId = `bbox_${idx}`;
+        const cropImgId = `cropImg_${idx}`;
+        const origImgId = `origImg_${idx}`;
+        
+        let subHtml = '';
+        if (item.sub_scores && typeof item.sub_scores === 'object') {
+            const parts = [];
+            subKeys.forEach(key => {
+                const val = item.sub_scores[key];
+                if (val !== undefined && val !== null) {
+                    const pct = (val * 100).toFixed(0);
+                    parts.push(`<span class="item"><span class="dot"></span>${subLabels[key]||key}: <span class="val">${pct}%</span></span>`);
+                }
+            });
+            if (parts.length) subHtml = `<div class="batch-subscore-compact">${parts.join('')}</div>`;
+        }
+        
+        let candButtons = '';
+        if (hasCandidates) {
+            const maxShow = Math.min(candidates.length, 5);
+            for (let i = 0; i < maxShow; i++) {
+                const active = i === 0 ? 'active' : '';
+                candButtons += `<button class="cand-btn ${active}" data-item-idx="${idx}" data-cand-idx="${i}">Top${i+1}</button>`;
             }
         }
 
-        if (data.object_vis) {
-            objImg.src = data.object_vis;
-            objImg.style.display = 'block';
-            objPlaceholder.style.display = 'none';
-        } else {
-            if (data.original_image) {
-                objImg.src = data.original_image;
-                objImg.style.display = 'block';
-                objPlaceholder.style.display = 'none';
-                objPlaceholder.textContent = '（检测图需后端支持）';
-                objPlaceholder.style.display = 'block';
-                objPlaceholder.style.color = 'rgba(30,47,58,0.3)';
-                objPlaceholder.style.fontSize = '12px';
-                objPlaceholder.style.padding = '4px';
-            } else {
-                objImg.style.display = 'none';
-                objPlaceholder.style.display = 'block';
-                objPlaceholder.textContent = '⏳ 等待后端支持';
-            }
-        }
+        html += `
+            <div class="batch-result-card" data-item-idx="${idx}">
+                <div class="batch-thumbs">
+                    <div class="batch-thumb-wrapper">
+                        <img id="${origImgId}" src="${defaultOrig}" alt="原图" loading="lazy" onerror="this.style.display='none'">
+                        <div class="label">📷 原图</div>
+                    </div>
+                    <div class="batch-thumb-wrapper">
+                        <img id="${cropImgId}" src="${defaultImg}" alt="裁剪" loading="lazy" onerror="this.style.display='none'">
+                        <div class="label">✂️ 裁剪</div>
+                        ${candButtons ? `<div class="cand-selector">${candButtons}</div>` : ''}
+                    </div>
+                </div>
+                <div class="batch-info" style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:200px;">
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <span style="font-weight:600;font-size:14px;">${item.filename || '未命名'}</span>
+                        <span style="font-size:18px;font-weight:700;color:#4a6a7a;">${formatNum(defaultScore)}</span>
+                        <span style="font-size:12px;opacity:0.4;">框: [${(defaultBbox||[]).join(', ')}]</span>
+                    </div>
+                    ${subHtml}
+                    <div style="font-size:13px;line-height:1.5;opacity:0.85;padding:4px 0;">${(item.explanation||'无裁剪理由')}</div>
+                    <div class="batch-actions" style="margin-top:2px;">
+                        <button class="btn btn-secondary download-crop-btn" data-item-idx="${idx}">⬇ 下载</button>
+                        <button class="btn btn-secondary view-reason-btn" data-item-idx="${idx}">📝 查看理由</button>
+                        <button class="btn btn-secondary export-single-zip-btn" data-item-idx="${idx}">📦 报告</button>
+                        <button class="btn btn-secondary export-single-pdf-btn" data-item-idx="${idx}">📄 PDF</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += `</div>`;
+    container.innerHTML = html;
 
-        const ctx = document.getElementById('radarChart').getContext('2d');
-        if (radarChartInstance) radarChartInstance.destroy();
-        const scores = data.sub_scores || { aesthetic:0.5, saliency:0.5, composition:0.5, subject:0.5, technical:0.5, area_prior:0.5 };
-        const radarData = {
-            labels: ['美学', '显著性', '构图', '主体', '技术', '面积先验'],
-            datasets: [{
-                label: '评分',
-                data: [scores.aesthetic||0, scores.saliency||0, scores.composition||0, scores.subject||0, scores.technical||0, scores.area_prior||0],
-                backgroundColor: 'rgba(127,165,185,0.2)',
-                borderColor: '#7fa5b9',
-                pointBackgroundColor: '#7fa5b9',
-                borderWidth: 2,
-            }]
-        };
-        radarChartInstance = new Chart(ctx, {
-            type: 'radar',
-            data: radarData,
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                scales: { r: { beginAtZero: true, max: 1, ticks: { stepSize: 0.2 } } },
-                plugins: { legend: { display: false } }
+    // --- 绑定批量事件 ---
+    container.querySelectorAll('.cand-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const itemIdx = parseInt(this.getAttribute('data-item-idx'));
+            const candIdx = parseInt(this.getAttribute('data-cand-idx'));
+            const item = results[itemIdx];
+            if (!item || !item.top_candidates || !item.top_candidates[candIdx]) return;
+            const card = this.closest('.batch-result-card');
+            if (!card) return;
+            const origImg = card.querySelector(`#origImg_${itemIdx}`);
+            const cropImg = card.querySelector(`#cropImg_${itemIdx}`);
+            const scoreSpan = card.querySelector(`#score_${itemIdx}`);
+            const bboxSpan = card.querySelector(`#bbox_${itemIdx}`);
+            const cand = item.top_candidates[candIdx];
+            if (origImg) origImg.src = cand.original_with_bbox || item.original_image;
+            if (cropImg) cropImg.src = cand.crop_base64 || '';
+            if (scoreSpan) scoreSpan.textContent = `得分: ${formatNum(cand.score)}`;
+            if (bboxSpan) bboxSpan.textContent = `框: [${(cand.bbox || item.bbox || []).join(', ')}]`;
+            const siblings = this.parentElement.querySelectorAll('.cand-btn');
+            siblings.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+
+    container.querySelectorAll('.download-crop-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const itemIdx = parseInt(this.getAttribute('data-item-idx'));
+            const item = results[itemIdx];
+            if (!item) return;
+            const card = this.closest('.batch-result-card');
+            const cropImg = card ? card.querySelector(`#cropImg_${itemIdx}`) : null;
+            let src = cropImg ? cropImg.src : (item.crop_image || '');
+            if (!src || src === '') { alert('该图片无裁剪图数据'); return; }
+            downloadBase64Image(src, `crop_${item.filename || itemIdx}.jpg`);
+        });
+    });
+
+    container.querySelectorAll('.view-reason-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const idx = parseInt(this.getAttribute('data-item-idx'));
+            const item = results[idx];
+            if (!item) return;
+            const modal = $('detailModal');
+            const img = $('modalCropImage');
+            const info = $('modalInfo');
+            img.src = item.crop_image || '';
+            let infoHtml = `<div style="font-size:13px;margin-bottom:8px;"><strong>${item.filename || '未命名'}</strong> &nbsp; 得分: ${formatNum(item.score)}</div>`;
+            infoHtml += `<div style="margin-bottom:8px;">简要说明:<div style="margin-top:6px;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px;">${(item.explanation||'')}</div></div>`;
+            infoHtml += `<div style="margin-bottom:8px;">详细说明:<div style="margin-top:6px;padding:8px;background:rgba(255,255,255,0.12);border-radius:8px;white-space:pre-wrap;">${(item.explanation_full||'')}</div></div>`;
+            if (item.top_candidates && item.top_candidates.length) {
+                infoHtml += '<div style="margin-top:6px;font-weight:600">候选裁剪</div>';
+                item.top_candidates.forEach((tc, i) => {
+                    infoHtml += `<div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><img src="${tc.crop_base64||''}" style="width:80px;height:56px;object-fit:cover;border-radius:6px;"/> <div>得分: ${formatNum(tc.score)} <button class="btn btn-secondary" data-b64="${tc.crop_base64||''}" data-name="${item.filename||''}_cand_${i+1}" style="padding:2px 10px;font-size:12px;">⬇</button></div></div>`;
+                });
+            }
+            info.innerHTML = infoHtml;
+            info.querySelectorAll('[data-b64]').forEach(bbtn => {
+                bbtn.addEventListener('click', () => {
+                    const b64 = bbtn.getAttribute('data-b64');
+                    const name = bbtn.getAttribute('data-name') || 'candidate.jpg';
+                    if (b64) downloadBase64Image(b64, `${name}.jpg`);
+                });
+            });
+            modal.classList.add('active');
+        });
+    });
+
+    container.querySelectorAll('.export-single-zip-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const idx = parseInt(btn.getAttribute('data-item-idx'));
+            const item = results[idx];
+            if (!item) return alert('无可导出数据');
+            try { await exportReport(item); } catch(e){ console.error(e); alert('导出失败'); }
+        });
+    });
+
+    container.querySelectorAll('.export-single-pdf-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const idx = parseInt(btn.getAttribute('data-item-idx'));
+            const item = results[idx];
+            if (!item) return alert('无可导出数据');
+            try { await exportReportPDF(item); } catch(e){ console.error(e); alert('导出失败'); }
+        });
+    });
+
+    const zipBtn = $('batchDownloadCropsBtn');
+    if (zipBtn) {
+        zipBtn.addEventListener('click', () => batchDownloadCrops(results));
+    }
+
+    const exportAllBtn = $('exportAllReportsBtn');
+    if (exportAllBtn) {
+        exportAllBtn.addEventListener('click', async () => {
+            try {
+                const resp = await fetch('/api/export_batch_report', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ results })
+                });
+                if (!resp.ok) throw new Error('导出失败');
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'batch_report.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('导出全部失败: ' + err.message);
             }
         });
     }
+}
 
-    // ---------- Tab 切换（手动精修tab激活时初始化cropper） ----------
+async function batchDownloadCrops(results) {
+    const wrapper = $('batchCardsWrapper');
+    if (!wrapper) { alert('没有可下载的裁剪图'); return; }
+    const cards = wrapper.querySelectorAll('.batch-result-card');
+    const validItems = [];
+    cards.forEach(card => {
+        const idx = parseInt(card.getAttribute('data-item-idx'));
+        const item = results[idx];
+        if (!item) return;
+        const cropImg = card.querySelector(`#cropImg_${idx}`);
+        const src = cropImg ? cropImg.src : (item.crop_image || '');
+        if (src && src !== '') validItems.push({ ...item, crop_image: src });
+    });
+    if (!validItems.length) { alert('没有可下载的裁剪图'); return; }
+    try {
+        const resp = await fetch('/api/batch_download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ results: validItems })
+        });
+        if (!resp.ok) throw new Error('批量下载失败');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'crops.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('批量下载失败: ' + err.message);
+    }
+}
+
+// ---------- 导出 JSON/CSV ----------
+async function exportResults(format) {
+    if (!batchProcessedData.length) { alert('没有批量处理结果可导出'); return; }
+    const exportData = batchProcessedData.map(item => ({
+        filename: item.filename || 'unknown',
+        bbox: item.bbox || [],
+        score: item.score || 0,
+        error: item.error || null
+    }));
+    try {
+        const resp = await fetch('/api/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ results: exportData, format })
+        });
+        if (!resp.ok) throw new Error('导出失败');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `predictions.${format === 'csv' ? 'csv' : 'json'}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('导出失败: ' + err.message);
+    }
+}
+
+function clearBatchResults() {
+    batchProcessedData = [];
+    $('batchResult').innerHTML = '<p style="opacity:0.3;text-align:center;padding:20px;">已清空</p>';
+}
+
+// ---------- AI 助手 ----------
+function initAssistant() {
+    const openBtn = $('assistantOpenBtn');
+    const panel = $('assistantPanel');
+    const closeBtn = $('assistantCloseBtn');
+    const sendBtn = $('assistantSendBtn');
+    const input = $('assistantInput');
+    const historyEl = $('assistantHistory');
+    const attachBtn = $('assistantAttachBtn');
+    const fileInput = $('assistantFileInput');
+    const preview = $('assistantPreview');
+    const removeBtn = $('assistantRemoveBtn');
+
+    const STORAGE_KEY = 'assistant_history_v1';
+    let convoHistory = [];
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) convoHistory = JSON.parse(raw);
+    } catch(e) { convoHistory = []; }
+
+    function persistHistory() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(convoHistory)); } catch(e) {}
+    }
+
+    function appendMsg(text, cls) {
+        const d = document.createElement('div');
+        d.className = 'assistant-msg ' + cls;
+        d.textContent = text;
+        historyEl.appendChild(d);
+        historyEl.scrollTop = historyEl.scrollHeight;
+    }
+
+    function readFileAsDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(fr.result);
+            fr.onerror = reject;
+            fr.readAsDataURL(file);
+        });
+    }
+
+    openBtn.addEventListener('click', () => {
+        panel.style.display = 'block';
+        input.focus();
+    });
+    closeBtn.addEventListener('click', () => {
+        panel.style.display = 'none';
+    });
+
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+        const f = fileInput.files[0];
+        if (!f) { preview.innerHTML = ''; removeBtn.style.display = 'none'; return; }
+        const img = document.createElement('img');
+        img.style.maxWidth = '130px';
+        img.style.maxHeight = '90px';
+        img.style.display = 'block';
+        const reader = new FileReader();
+        reader.onload = () => { img.src = reader.result; preview.innerHTML = ''; preview.appendChild(img); removeBtn.style.display = 'inline-flex'; };
+        reader.readAsDataURL(f);
+    });
+    removeBtn.addEventListener('click', () => {
+        fileInput.value = '';
+        preview.innerHTML = '';
+        removeBtn.style.display = 'none';
+    });
+
+    // send 函数
+    async function send() {
+        const text = input.value.trim();
+        if (!text) return;
+
+        appendMsg(text, 'user');
+        input.value = '';
+        convoHistory.push({ role: 'user', text });
+        persistHistory();
+
+        // 显示"正在思考"状态
+        const thinkingDiv = document.createElement('div');
+        thinkingDiv.className = 'assistant-msg bot';
+        thinkingDiv.id = 'thinkingIndicator';
+        thinkingDiv.textContent = '🤔 正在思考中...';
+        historyEl.appendChild(thinkingDiv);
+        historyEl.scrollTop = historyEl.scrollHeight;
+
+        try {
+            let image_base64 = null;
+            if (fileInput && fileInput.files && fileInput.files[0]) {
+                try {
+                    image_base64 = await readFileAsDataURL(fileInput.files[0]);
+                } catch(e) {
+                    console.warn('读取附件失败', e);
+                }
+            }
+
+            const body = { message: text, history: convoHistory };
+            if (image_base64) body.image_base64 = image_base64;
+
+            // 移除"正在思考"指示器
+            const thinkingEl = document.getElementById('thinkingIndicator');
+            if (thinkingEl) thinkingEl.remove();
+
+            const resp = await fetch('/api/assistant_stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (!resp.ok) {
+                appendMsg('助手出错: ' + resp.statusText, 'bot');
+                return;
+            }
+
+            const botDiv = document.createElement('div');
+            botDiv.className = 'assistant-msg bot';
+            botDiv.textContent = '';
+            historyEl.appendChild(botDiv);
+            historyEl.scrollTop = historyEl.scrollHeight;
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let doneReading = false;
+            let pendingText = '';
+            let typing = false;
+            const TYPE_INTERVAL_MS = 20;
+            const TYPE_CHUNK_SIZE = 2;
+
+            function typeTick() {
+                if (!pendingText) { typing = false; return; }
+                typing = true;
+                const chunk = pendingText.slice(0, TYPE_CHUNK_SIZE);
+                botDiv.textContent += chunk;
+                pendingText = pendingText.slice(chunk.length);
+                historyEl.scrollTop = historyEl.scrollHeight;
+                setTimeout(typeTick, TYPE_INTERVAL_MS);
+            }
+
+            function waitForTypingDone() {
+                return new Promise((resolve) => {
+                    const id = setInterval(() => {
+                        if (!typing && !pendingText) {
+                            clearInterval(id);
+                            resolve();
+                        }
+                    }, 50);
+                });
+            }
+
+            while (!doneReading) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                let idx;
+                while ((idx = buffer.indexOf('\n\n')) !== -1) {
+                    const block = buffer.slice(0, idx);
+                    buffer = buffer.slice(idx + 2);
+
+                    const lines = block.split('\n');
+                    let isDoneEvent = false;
+                    for (const line of lines) {
+                        if (line.startsWith('data:')) {
+                            const payload = line.slice(5).trim();
+                            pendingText += payload;
+                            if (!typing) typeTick();
+                        } else if (line.startsWith('event:')) {
+                            const ev = line.slice(6).trim();
+                            if (ev === 'done') isDoneEvent = true;
+                            if (ev === 'error') {
+                                pendingText += '\n[助手出错]';
+                                if (!typing) typeTick();
+                            }
+                        }
+                    }
+                    if (isDoneEvent) {
+                        doneReading = true;
+                        break;
+                    }
+                }
+            }
+
+            if (buffer.trim()) {
+                const cleaned = buffer.replace(/(^|\n)data:\s*/g, '\n').trim();
+                if (cleaned) {
+                    pendingText += cleaned;
+                    if (!typing) typeTick();
+                }
+            }
+
+            await waitForTypingDone();
+            const botText = botDiv.textContent || '';
+            convoHistory.push({ role: 'assistant', text: botText });
+            persistHistory();
+
+        } catch(e) {
+            const thinkingEl = document.getElementById('thinkingIndicator');
+            if (thinkingEl) thinkingEl.remove();
+            appendMsg('网络错误，无法联系助手: ' + (e.message || ''), 'bot');
+            console.error('Assistant error:', e);
+        }
+    }
+
+    sendBtn.addEventListener('click', send);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+}
+
+// ---------- Tab 切换 ----------
+function initTabs() {
     document.querySelectorAll('#singleTabs .tab-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             document.querySelectorAll('#singleTabs .tab-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             const tab = this.dataset.tab;
             document.querySelectorAll('#singleTabContent .tab-content').forEach(c => c.classList.remove('active'));
-            document.getElementById('tab-'+tab).classList.add('active');
+            const target = document.getElementById('tab-' + tab);
+            if (target) target.classList.add('active');
 
             if (tab === 'manual') {
-                // 当切换到手动精修时，如果有原始图像数据，初始化cropper
                 if (rawImageData) {
-                    // 如果已经有cropper且图片源相同，则跳过重新初始化（或仅重置）
                     const img = document.getElementById('manualImage');
                     if (!cropper || img.src !== rawImageData) {
                         initCropper(rawImageData);
-                    } else {
-                        // 容器显示后，调整cropper尺寸
-                        if (cropper) {
-                            setTimeout(() => cropper.resize(), 50);
-                        }
+                    } else if (cropper) {
+                        setTimeout(() => cropper.resize(), 50);
                     }
                 } else {
-                    // 没有图片，清空显示
                     document.getElementById('manualImage').src = '';
-                    if (cropper) {
-                        cropper.destroy();
-                        cropper = null;
-                    }
+                    if (cropper) { cropper.destroy(); cropper = null; }
                 }
             }
 
-            if (tab === 'viz') {
-                const last = window._lastSingleResult;
-                if (last) {
-                    updateVisualization(last);
-                }
+            if (tab === 'viz' && lastSingleResult) {
+                updateVisualization(lastSingleResult);
             }
         });
     });
+}
 
-    // ---------- 刷新可视化按钮 ----------
-    document.getElementById('refreshVizBtn').addEventListener('click', function() {
-        const last = window._lastSingleResult;
-        if (last) {
-            updateVisualization(last);
+// ---------- 初始化 ----------
+function init() {
+    loadConfig();
+    initModal();
+    renderHistory();
+    setupManualTab();
+    initTabs();
+    initAssistant();
+
+    // 单图上传
+    const singleArea = $('singleUploadArea');
+    const singleInput = $('singleFileInput');
+    singleArea.addEventListener('click', () => singleInput.click());
+    singleArea.addEventListener('dragover', (e) => e.preventDefault());
+    singleArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) processSingleImage(file);
+    });
+    singleInput.addEventListener('change', (e) => {
+        if (e.target.files[0]) processSingleImage(e.target.files[0]);
+        e.target.value = '';
+    });
+
+    // 批量上传
+    const batchArea = $('batchUploadArea');
+    const batchInput = $('batchFileInput');
+    batchArea.addEventListener('click', () => batchInput.click());
+    batchArea.addEventListener('dragover', (e) => e.preventDefault());
+    batchArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+        if (files.length) processBatch(files);
+    });
+    batchInput.addEventListener('change', (e) => {
+        if (e.target.files.length) processBatch(Array.from(e.target.files));
+        e.target.value = '';
+    });
+
+    // 权重按钮
+    $('applyWeightsBtn').addEventListener('click', applyWeights);
+    $('resetWeightsBtn').addEventListener('click', resetWeights);
+
+    // 导出 & 清空
+    $('exportJsonBtn').addEventListener('click', () => exportResults('json'));
+    $('exportCsvBtn').addEventListener('click', () => exportResults('csv'));
+    $('clearBatchBtn').addEventListener('click', clearBatchResults);
+    $('clearHistoryBtn').addEventListener('click', clearHistory);
+
+    // CLIP prompt conversion buttons
+    const convertBtn = $('convertPromptBtn');
+    if (convertBtn) {
+        convertBtn.addEventListener('click', async () => {
+            const text = $('userPromptInput') ? $('userPromptInput').value.trim() : '';
+            if (!text) return alert('请输入文本提示');
+            const origText = convertBtn.textContent;
+            convertBtn.disabled = true;
+            convertBtn.textContent = '转换中...';
+            const disp = $('clipPromptsDisplay');
+            if (disp) disp.textContent = '转换中...';
+            try {
+                const resp = await fetch('/api/convert_clip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+                if (!resp.ok) throw new Error('转换失败');
+                const j = await resp.json();
+                const prompts = j.prompts || [];
+                window._convertedClipPromptsSingle = prompts;
+                if (disp) disp.textContent = prompts.join(' | ');
+            } catch (err) {
+                console.error(err);
+                if (disp) disp.textContent = '';
+                alert('CLIP prompts 转换失败');
+            } finally {
+                convertBtn.disabled = false;
+                convertBtn.textContent = origText;
+            }
+        });
+    }
+
+    const batchConvertBtn = $('batchConvertBtn');
+    if (batchConvertBtn) {
+        batchConvertBtn.addEventListener('click', async () => {
+            const text = $('batchPromptInput') ? $('batchPromptInput').value.trim() : '';
+            if (!text) return alert('请输入批量提示');
+            const origText = batchConvertBtn.textContent;
+            batchConvertBtn.disabled = true;
+            batchConvertBtn.textContent = '转换中...';
+            const disp = $('batchClipPromptsDisplay');
+            if (disp) disp.textContent = '转换中...';
+            try {
+                const resp = await fetch('/api/convert_clip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+                if (!resp.ok) throw new Error('转换失败');
+                const j = await resp.json();
+                const prompts = j.prompts || [];
+                window._convertedClipPromptsBatch = prompts;
+                if (disp) disp.textContent = prompts.join(' | ');
+            } catch (err) {
+                console.error(err);
+                if (disp) disp.textContent = '';
+                alert('CLIP prompts 转换失败');
+            } finally {
+                batchConvertBtn.disabled = false;
+                batchConvertBtn.textContent = origText;
+            }
+        });
+    }
+
+    // 刷新可视化
+    $('refreshVizBtn').addEventListener('click', function() {
+        if (lastSingleResult) {
+            updateVisualization(lastSingleResult);
         } else {
             alert('请先上传图片并运行智能裁剪');
         }
     });
 
-    // ---------- 初始化 ----------
-    function init() {
-        loadConfig();
-        initModal();
-        renderHistory();
-        setupManualTab();
+    console.log('AestheticCropper 已启动，全部功能正常');
+}
 
-        // 单图上传
-        const singleArea = $('singleUploadArea');
-        const singleInput = $('singleFileInput');
-        singleArea.addEventListener('click', () => singleInput.click());
-        singleArea.addEventListener('dragover', (e) => e.preventDefault());
-        singleArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) processSingleImage(file);
-        });
-        singleInput.addEventListener('change', (e) => {
-            if (e.target.files[0]) processSingleImage(e.target.files[0]);
-            e.target.value = '';
-        });
-
-        // 批量上传
-        const batchArea = $('batchUploadArea');
-        const batchInput = $('batchFileInput');
-        batchArea.addEventListener('click', () => batchInput.click());
-        batchArea.addEventListener('dragover', (e) => e.preventDefault());
-        batchArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-            if (files.length) processBatch(files);
-        });
-        batchInput.addEventListener('change', (e) => {
-            if (e.target.files.length) processBatch(Array.from(e.target.files));
-            e.target.value = '';
-        });
-
-        // 权重按钮
-        $('applyWeightsBtn').addEventListener('click', applyWeights);
-        $('resetWeightsBtn').addEventListener('click', resetWeights);
-
-        // 导出 & 清空
-        $('exportJsonBtn').addEventListener('click', () => exportResults('json'));
-        $('exportCsvBtn').addEventListener('click', () => exportResults('csv'));
-        $('clearBatchBtn').addEventListener('click', clearBatchResults);
-        $('clearHistoryBtn').addEventListener('click', clearHistory);
-
-        console.log('AestheticCropper 已启动，手动裁剪默认大图，雷达图自动呈现');
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
+// ---------- 启动 ----------
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
 </script>
+
 </body>
 </html>

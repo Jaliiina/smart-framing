@@ -156,6 +156,9 @@ class AestheticCropper:
 
         image = load_image(image_path)
         h, w = image.shape[:2]
+        # 初始化兜底，解决best_crop未定义报错
+        best_crop = image.copy()
+        best_bbox = (0, 0, w, h)
 
         # --- Step 1: Run dual saliency (U2-Net + fallback) ---
         saliency_map, fallback_sal_map, is_uniform, fallback_uniform = (
@@ -277,16 +280,28 @@ class AestheticCropper:
             all_candidates,
             image_shape=image.shape[:2],
         )
-        best = all_candidates[0]
-        top_k = all_candidates[: self.fusion.top_k_display]
+        # 安全读取最优候选，边界保护
+        if len(all_candidates) > 0:
+            best = all_candidates[0]
+            top_k = all_candidates[: self.fusion.top_k_display]
+            x1, y1, x2, y2 = best.bbox
+            # 裁剪坐标防越界
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(w, x2)
+            y2 = min(h, y2)
+            best_crop = image[y1:y2, x1:x2]
 
         # --- Step 6: Generate explanation ---
-        explanation = self.explainer.generate(best.sub_scores, has_subject)
+        explanation_short, explanation_full = self.explainer.generate_with_image(
+            origin_image=image,
+            crop_image=best_crop,
+            sub_scores=best.sub_scores,
+            detected_objects=detected_objects,
+            has_subject=has_subject
+        )
 
         # --- Step 7: Build result ---
-        x1, y1, x2, y2 = best.bbox
-        best_crop = image[y1:y2, x1:x2]
-
         elapsed = time.time() - start_time
         logger.info(
             f"Processed {image_path} in {elapsed:.2f}s | "
@@ -300,7 +315,8 @@ class AestheticCropper:
             best_score=best.final_score,
             best_sub_scores=best.sub_scores,
             top_candidates=top_k,
-            explanation=explanation,
+            explanation=explanation_short,  # 兼容旧字段，存短文案
+            explanation_full=explanation_full, # 新增长报告文案
             saliency_map=saliency_map,
             detected_objects=detected_objects,
             all_candidates=all_candidates,
@@ -877,7 +893,8 @@ class AestheticCropper:
             coord_file.write_text(
                 f"bbox: {result.best_bbox}\n"
                 f"score: {result.best_score:.4f}\n"
-                f"explanation: {result.explanation}\n",
+                f"简短裁剪理由: {result.explanation}\n"
+                f"完整分析报告: {result.explanation_full}\n",
                 encoding="utf-8",
             )
 

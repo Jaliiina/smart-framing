@@ -135,31 +135,26 @@ semantic_crop:
   positive_aggregation: "context_mean"
   negative_aggregation: "max"
   positive_prompts:
-    - "beautiful landscape photograph"
-    - "beautiful seascape with waves"
-    - "airplane in the sky"
-    - "pencil tips and hand drawing"
-    - "complete building architecture"
-    - "ocean waves scenic view"
-    - "illuminated tree canopy"
-    - "symmetric road with trees"
-    - "complete glass object"
-    - "motorcycle scenic landscape"
-    - "well framed main subject"
+      - "a well-composed professional photograph with a clear main subject"
+      - "a balanced image with a strong focal point and good framing"
+      - "a visually pleasing crop that preserves the main subject and context"
+      - "sharp subject with natural colors and pleasing exposure"
+      - "clean composition with minimal distracting elements"
+      - "a complete photographic crop suitable for display"
+      - "a crop that preserves the entire person, including head and limbs"
+      - "a properly framed portrait or full-body crop where the person is not cut off"
+      - "a portrait with the face fully visible and unobstructed"
+
   negative_prompts:
-    - "trash or garbage"
-    - "plastic bag"
-    - "orange bucket or plastic barrel"
-    - "traffic cone or construction object"
-    - "cluttered random foreground"
-    - "dirty water or muddy ground"
-    - "rusty roof edge"
-    - "metal roof eaves and beams"
-    - "dark empty ground"
-    - "net rope foreground"
-    - "large blank white area"
-    - "large flat color area"
-    - "cropped cut off object"
+      - "cluttered foreground or distracting objects that steal attention"
+      - "crop that cuts off or truncates the main subject"
+      - "large uniform blank area dominating the crop"
+      - "out-of-focus or poorly exposed main subject"
+      - "visible artifacts, heavy noise, or compression blocks"
+      - "distracting occluders or accidental close-ups of ground"
+      - "person partially cut off at head or limbs"
+      - "crop that bisects or removes key parts of a person"
+      - "close-up cropping that accidentally chops off the person"
 
 semantic_heatmap:
   enabled: false
@@ -259,3 +254,12 @@ subject:
   avoid_distractors: true
 
 
+llm:
+  provider: qwen        
+  enabled: true        
+  model: qwen3.7-plus  
+  endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"  
+  api_key: ""         
+  max_tokens: 120
+  temperature: 0.2
+  timeout: 8.0
