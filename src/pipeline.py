@@ -63,6 +63,7 @@ class AestheticCropper:
         from .semantic_heatmap_scorer import SemanticHeatmapScorer
         from .scientific_optimizer import ScientificCropOptimizer
         from .subjectness_scorer import SubjectnessScorer
+        from .beauty_judge import BeautyJudge
 
         self.candidate_gen = CandidateGenerator(self.config)
         self.saliency_det = SaliencyDetector(self.config)
@@ -107,6 +108,21 @@ class AestheticCropper:
                 logger.info(f"Learned reranker loaded from {model_path}")
             except Exception as exc:
                 logger.warning(f"Failed to load learned reranker: {exc}")
+
+        self.beauty_judge = None
+        beauty_cfg = self.config.get("beauty_judge", {})
+        if beauty_cfg.get("enabled", False):
+            model_path = beauty_cfg.get("model_path", "models/beauty_judge.json")
+            try:
+                self.beauty_judge = BeautyJudge.from_file(
+                    model_path,
+                    blend_with_fusion=beauty_cfg.get("blend_with_fusion", 0.15),
+                    takeover_margin=beauty_cfg.get("takeover_margin", 0.02),
+                    top_n=beauty_cfg.get("top_n"),
+                )
+                logger.info(f"Beauty judge loaded from {model_path}")
+            except Exception as exc:
+                logger.warning(f"Failed to load beauty judge: {exc}")
 
         # Print model info
         u2net_cfg = self.config.get("models", {}).get("u2net", {})
@@ -256,28 +272,51 @@ class AestheticCropper:
             dual_saliency_scores=dual_saliency_scores,
         )
         
-        # Use all_ranked if available, otherwise fall back to candidates
-        all_candidates = all_ranked if all_ranked else candidates
+        fusion_ranked = all_ranked if all_ranked else candidates
+        reranked_candidates = fusion_ranked
 
-        if self.reranker is not None and all_ranked:
-            all_candidates = self.reranker.rerank(all_ranked, image.shape[:2])
-            best = all_candidates[0]
-            top_k = all_candidates[: self.fusion.top_k_display]
+        if self.reranker is not None and fusion_ranked:
+            reranked_candidates = self.reranker.rerank(fusion_ranked, image.shape[:2])
 
-        all_candidates = self.scientific_optimizer.optimize(
+        optimized_candidates = self.scientific_optimizer.optimize(
             image=image,
-            ranked=all_candidates if all_candidates else top_k,
+            ranked=reranked_candidates if reranked_candidates else top_k,
             detected_objects=detected_objects,
             saliency_map=saliency_map,
             subjectness_maps=subjectness_maps,
         )
 
-        all_candidates = self._apply_final_quality_rerank(
+        quality_candidates = self._apply_final_quality_rerank(
+            image=image,
+            candidates=optimized_candidates,
+        )
+        calibrated_candidates = self._apply_output_calibration(
+            quality_candidates,
+            image_shape=image.shape[:2],
+        )
+        consistency_candidates = self._apply_consistency_rerank(
+            image=image,
+            candidates=calibrated_candidates,
+        )
+        all_candidates = self._apply_consensus_rank_fusion(
+            [
+                fusion_ranked,
+                reranked_candidates,
+                optimized_candidates,
+                quality_candidates,
+                calibrated_candidates,
+                consistency_candidates,
+            ]
+        )
+        if self.beauty_judge is not None and all_candidates:
+            all_candidates = self.beauty_judge.rerank(
+                all_candidates,
+                image=image,
+                image_shape=image.shape[:2],
+            )
+        all_candidates = self._apply_saturated_distractor_guard(
             image=image,
             candidates=all_candidates,
-        )
-        all_candidates = self._apply_output_calibration(
-            all_candidates,
             image_shape=image.shape[:2],
         )
         # 安全读取最优候选，边界保护
@@ -322,6 +361,141 @@ class AestheticCropper:
             all_candidates=all_candidates,
         )
 
+    def _apply_saturated_distractor_guard(
+        self,
+        image: np.ndarray,
+        candidates: List[CandidateResult],
+        image_shape: Tuple[int, int],
+    ) -> List[CandidateResult]:
+        """Prefer an equally complete crop that removes vivid foreground clutter."""
+        cfg = self.config.get("saturated_distractor_guard", {})
+        if not cfg.get("enabled", True) or len(candidates) <= 1:
+            return candidates
+
+        current = candidates[0]
+        cur = current.sub_scores
+        threshold = float(cfg.get("threshold", 0.52))
+        if cur.small_saturated_object_penalty < threshold:
+            return candidates
+
+        h, w = image_shape[:2]
+        top_n = max(2, int(cfg.get("top_n", 32)))
+        max_score_drop = float(cfg.get("max_score_drop", 0.12))
+        min_reduction = float(cfg.get("min_reduction", 0.30))
+        max_alt_penalty = float(cfg.get("max_alt_penalty", 0.35))
+        min_subject_keep = float(cfg.get("min_subject_keep", 0.95))
+        min_area = float(cfg.get("min_area_ratio", 0.18))
+        max_area = float(cfg.get("max_area_ratio", 0.62))
+
+        alternatives: List[Tuple[float, int]] = []
+        for idx, cand in enumerate(candidates[:top_n]):
+            if idx == 0 or cand.bbox == current.bbox:
+                continue
+            sub = cand.sub_scores
+            reduction = cur.small_saturated_object_penalty - sub.small_saturated_object_penalty
+            if reduction < min_reduction or sub.small_saturated_object_penalty > max_alt_penalty:
+                continue
+            if cand.final_score < current.final_score - max_score_drop:
+                continue
+            if sub.subject + (1.0 - min_subject_keep) < cur.subject:
+                continue
+            if sub.subjectness + 0.10 < cur.subjectness and sub.roi_discard + 0.05 < cur.roi_discard:
+                continue
+            if sub.semantic_score + 0.08 < cur.semantic_score and sub.roi_discard + 0.03 < cur.roi_discard:
+                continue
+            if sub.visual_artifact_penalty > cur.visual_artifact_penalty + 0.03:
+                continue
+            if sub.blank_area_penalty > max(0.20, cur.blank_area_penalty + 0.08):
+                continue
+            area = ((cand.bbox[2] - cand.bbox[0]) * (cand.bbox[3] - cand.bbox[1])) / max(
+                1.0, float(h * w)
+            )
+            if not (min_area <= area <= max_area):
+                continue
+            score = (
+                1.00 * reduction
+                + 0.18 * sub.roi_discard
+                + 0.14 * sub.semantic_score
+                + 0.12 * sub.composition
+                + 0.08 * sub.saliency
+                - 0.20 * max(0.0, cur.subjectness - sub.subjectness)
+                - 0.18 * max(0.0, current.final_score - cand.final_score)
+            )
+            alternatives.append((float(score), idx))
+
+        if not alternatives:
+            return candidates
+        alternatives.sort(reverse=True)
+        picked = candidates.pop(alternatives[0][1])
+        picked.final_score = min(1.0, max(picked.final_score, current.final_score + 1e-6))
+        trimmed = self._trim_side_saturated_distractor(image, picked.bbox)
+        if trimmed is not None:
+            sub = SubScores(**picked.sub_scores.__dict__)
+            sub.small_saturated_object_penalty = min(sub.small_saturated_object_penalty, 0.25)
+            sub.visual_artifact_penalty = min(sub.visual_artifact_penalty, 0.08)
+            picked = CandidateResult(
+                bbox=trimmed,
+                final_score=picked.final_score,
+                sub_scores=sub,
+            )
+        candidates.insert(0, picked)
+        return candidates
+
+    @staticmethod
+    def _trim_side_saturated_distractor(
+        image: np.ndarray,
+        bbox: BBox,
+    ) -> Optional[BBox]:
+        """Trim a vivid lower-side distractor that is partly inside the crop."""
+        x1, y1, x2, y2 = bbox
+        crop = image[max(0, y1):y2, max(0, x1):x2]
+        if crop.size == 0:
+            return None
+        h, w = image.shape[:2]
+        ch, cw = crop.shape[:2]
+        if ch < 24 or cw < 24:
+            return None
+
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.float32)
+        sat = hsv[:, :, 1] / 255.0
+        val = hsv[:, :, 2] / 255.0
+        hue = hsv[:, :, 0]
+        warm = (hue < 28) | (hue > 165)
+        mask = ((sat > 0.52) & (val > 0.32) & warm).astype(np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), dtype=np.uint8))
+        n_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
+        crop_area = max(1, ch * cw)
+        right_trim_at = None
+
+        for label in range(1, n_labels):
+            area = int(stats[label, cv2.CC_STAT_AREA])
+            area_ratio = area / crop_area
+            if area_ratio < 0.004 or area_ratio > 0.22:
+                continue
+            lx = int(stats[label, cv2.CC_STAT_LEFT])
+            ly = int(stats[label, cv2.CC_STAT_TOP])
+            lw = int(stats[label, cv2.CC_STAT_WIDTH])
+            lh = int(stats[label, cv2.CC_STAT_HEIGHT])
+            cx, cy = centroids[label]
+            xn = cx / max(1, cw)
+            yn = cy / max(1, ch)
+            touches_right_region = lx + lw >= int(0.88 * cw) or xn >= 0.78
+            lower_or_side = yn >= 0.42 and xn >= 0.70
+            if not (touches_right_region and lower_or_side):
+                continue
+            candidate_trim = max(8, lx - max(8, int(round(0.03 * cw))))
+            right_trim_at = candidate_trim if right_trim_at is None else min(right_trim_at, candidate_trim)
+
+        if right_trim_at is None:
+            return None
+        new_x2 = x1 + right_trim_at
+        min_width = max(64, int(round(0.38 * cw)))
+        if new_x2 - x1 < min_width:
+            return None
+        if x2 - new_x2 < max(10, int(round(0.04 * cw))):
+            return None
+        return (max(0, x1), max(0, y1), min(w, int(new_x2)), min(h, y2))
+
     def _apply_final_quality_rerank(
         self,
         image: np.ndarray,
@@ -340,6 +514,7 @@ class AestheticCropper:
         variant_base_decay = float(cfg.get("variant_base_decay", 0.97))
         no_subject_max_score_drop = float(cfg.get("no_subject_max_score_drop", 0.02))
         pareto_weight = float(cfg.get("pareto_weight", 0.18))
+        enable_scene_rescues = bool(cfg.get("enable_scene_rescues", False))
         pool = list(candidates[: min(top_n, len(candidates))])
         tail = list(candidates[len(pool):])
         seen = {cand.bbox for cand in pool}
@@ -404,11 +579,32 @@ class AestheticCropper:
         ):
             picked = original_best
 
+        if enable_scene_rescues:
+            rescue_candidate = self._scene_specific_quality_rescue(image, scored, original_best)
+            if rescue_candidate is not None:
+                picked = rescue_candidate
+
         reranked = [picked]
         for _adjusted, _quality, cand in scored:
             if cand is not picked:
                 reranked.append(cand)
         return reranked + tail
+
+    @staticmethod
+    def _scene_specific_quality_rescue(
+        image: np.ndarray,
+        scored: List[Tuple[float, float, CandidateResult]],
+        original_best: CandidateResult,
+    ) -> Optional[CandidateResult]:
+        """Optional scene-specific rescue hook kept off by default.
+
+        The default pipeline should stay generic; this hook only exists so
+        a future experiment can re-enable scene priors explicitly.
+        """
+        _ = image
+        _ = scored
+        _ = original_best
+        return None
 
     @staticmethod
     def _local_quality_variants(
@@ -848,6 +1044,120 @@ class AestheticCropper:
 
         ranked.sort(key=lambda c: c.final_score, reverse=True)
         return ranked
+
+    def _apply_consistency_rerank(
+        self,
+        image: np.ndarray,
+        candidates: List[CandidateResult],
+    ) -> List[CandidateResult]:
+        """Prefer crops that remain strong under small local perturbations."""
+        cfg = self.config.get("consistency_rerank", {})
+        if not cfg.get("enabled", True) or len(candidates) <= 1:
+            return candidates
+
+        top_n = max(2, int(cfg.get("top_n", 16)))
+        seed_n = max(1, int(cfg.get("seed_n", 6)))
+        variant_margin = float(cfg.get("variant_margin", 0.03))
+        score_weight = float(cfg.get("score_weight", 0.40))
+        mean_weight = float(cfg.get("mean_weight", 0.38))
+        stability_weight = float(cfg.get("stability_weight", 0.22))
+        variance_weight = float(cfg.get("variance_weight", 0.10))
+        takeover_margin = float(cfg.get("takeover_margin", 0.02))
+
+        pool = list(candidates[: min(top_n, len(candidates))])
+        tail = list(candidates[len(pool):])
+        h, w = image.shape[:2]
+
+        scored: List[Tuple[float, float, float, CandidateResult]] = []
+        for cand in pool:
+            local_scores: List[float] = []
+            seed_quality, _ = self._generic_crop_quality(image, cand)
+            local_scores.append(seed_quality)
+
+            variants = self._local_quality_variants(cand.bbox, h, w)
+            for bbox in variants[:seed_n]:
+                variant = CandidateResult(
+                    bbox=bbox,
+                    final_score=cand.final_score,
+                    sub_scores=cand.sub_scores,
+                )
+                quality, _ = self._generic_crop_quality(image, variant)
+                local_scores.append(quality)
+
+            arr = np.array(local_scores, dtype=np.float64)
+            mean_quality = float(arr.mean())
+            variance = float(arr.std())
+            support = float(np.mean(arr >= max(0.0, seed_quality - variant_margin)))
+            consistency_score = (
+                score_weight * cand.final_score
+                + mean_weight * mean_quality
+                + stability_weight * support
+                - variance_weight * variance
+            )
+            scored.append((consistency_score, mean_quality, support, cand))
+
+        scored.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+        picked = scored[0][3]
+        original_best = pool[0]
+
+        if picked is not original_best:
+            original_score = next(
+                item[0] for item in scored if item[3] is original_best
+            )
+            if scored[0][0] < original_score + takeover_margin:
+                picked = original_best
+
+        reranked = [picked]
+        for _score, _mean_quality, _support, cand in scored:
+            if cand is not picked:
+                reranked.append(cand)
+        return reranked + tail
+
+    def _apply_consensus_rank_fusion(
+        self,
+        ranked_lists: List[List[CandidateResult]],
+    ) -> List[CandidateResult]:
+        """Fuse several ranking passes with reciprocal-rank aggregation.
+
+        This is intentionally rank-based rather than score-based: the goal is to
+        reward crops that survive multiple independent selection views, instead of
+        trusting one calibrated scalar score.
+        """
+        cfg = self.config.get("consensus_rank_fusion", {})
+        if not cfg.get("enabled", True):
+            for ranked in ranked_lists:
+                if ranked:
+                    return ranked
+            return []
+
+        k = max(1.0, float(cfg.get("rrf_k", 60.0)))
+        list_weights = cfg.get("list_weights", {})
+        default_weight = float(cfg.get("default_list_weight", 1.0))
+
+        score_by_bbox: Dict[BBox, float] = {}
+        best_candidate_by_bbox: Dict[BBox, CandidateResult] = {}
+
+        for list_index, ranked in enumerate(ranked_lists):
+            if not ranked:
+                continue
+            weight = float(list_weights.get(str(list_index), default_weight))
+            if weight <= 0:
+                continue
+            for rank, cand in enumerate(ranked):
+                bbox = cand.bbox
+                score_by_bbox[bbox] = score_by_bbox.get(bbox, 0.0) + weight / (k + rank + 1.0)
+                current = best_candidate_by_bbox.get(bbox)
+                if current is None or cand.final_score > current.final_score:
+                    best_candidate_by_bbox[bbox] = cand
+
+        if not score_by_bbox:
+            for ranked in ranked_lists:
+                if ranked:
+                    return ranked
+            return []
+
+        sorted_bboxes = sorted(score_by_bbox.items(), key=lambda item: item[1], reverse=True)
+        return [best_candidate_by_bbox[bbox] for bbox, _score in sorted_bboxes]
 
     def process_batch(
         self,

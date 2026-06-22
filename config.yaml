@@ -112,6 +112,47 @@ refiner:
   enabled: false
   max_score_drop: 0.08
 
+consistency_rerank:
+  enabled: true
+  top_n: 16
+  seed_n: 6
+  variant_margin: 0.03
+  score_weight: 0.40
+  mean_weight: 0.38
+  stability_weight: 0.22
+  variance_weight: 0.10
+  takeover_margin: 0.02
+
+consensus_rank_fusion:
+  enabled: true
+  rrf_k: 60.0
+  default_list_weight: 1.0
+  list_weights:
+    "0": 1.0
+    "1": 1.0
+    "2": 1.0
+    "3": 1.0
+    "4": 1.0
+    "5": 1.0
+
+beauty_judge:
+  enabled: true
+  model_path: "models/beauty_judge.json"
+  blend_with_fusion: 0.25
+  takeover_margin: 0.015
+  top_n: 64
+
+saturated_distractor_guard:
+  enabled: true
+  top_n: 32
+  threshold: 0.52
+  min_reduction: 0.30
+  max_alt_penalty: 0.35
+  max_score_drop: 0.12
+  min_subject_keep: 0.95
+  min_area_ratio: 0.18
+  max_area_ratio: 0.62
+
 roi_discard:
   weight_roi_saliency: 0.35
   weight_discard_quality: 0.25

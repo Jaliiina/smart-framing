@@ -1,4 +1,4 @@
-"""Flask-based GUI for AestheticCropper."""
+﻿"""Flask-based GUI for AestheticCropper."""
 
 from __future__ import annotations
 
@@ -22,9 +22,17 @@ os.environ.setdefault("YOLO_SETTINGS_DIR", _yolo_settings_dir)
 import cv2
 import numpy as np
 from flask import Flask, jsonify, render_template, request
-from flask.json.provider import DefaultJSONProvider
 from flask import stream_with_context
 import urllib.parse
+
+try:
+    from flask.json.provider import DefaultJSONProvider
+
+    _HAS_JSON_PROVIDER = True
+except ImportError:
+    DefaultJSONProvider = object
+    _HAS_JSON_PROVIDER = False
+    from flask.json import JSONEncoder
 
 # Add parent directory to path so we can import src
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -32,22 +40,38 @@ from src.pipeline import AestheticCropper
 from src.utils import load_config, draw_bbox, load_image
 
 
-class NumpyJSONProvider(DefaultJSONProvider):
-    """Custom JSON provider that handles numpy types."""
+if _HAS_JSON_PROVIDER:
+    class NumpyJSONProvider(DefaultJSONProvider):
+        """Custom JSON provider that handles numpy types."""
 
-    def default(self, o):
-        if isinstance(o, (np.integer,)):
-            return int(o)
-        if isinstance(o, (np.floating,)):
-            return float(o)
-        if isinstance(o, np.ndarray):
-            return o.tolist()
-        return super().default(o)
+        def default(self, o):
+            if isinstance(o, (np.integer,)):
+                return int(o)
+            if isinstance(o, (np.floating,)):
+                return float(o)
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+            return super().default(o)
+else:
+    class NumpyJSONEncoder(JSONEncoder):
+        """Custom JSON encoder that handles numpy types for older Flask."""
+
+        def default(self, o):
+            if isinstance(o, (np.integer,)):
+                return int(o)
+            if isinstance(o, (np.floating,)):
+                return float(o)
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+            return super().default(o)
 
 
 app = Flask(__name__)
-app.json_provider_class = NumpyJSONProvider
-app.json = NumpyJSONProvider(app)
+if _HAS_JSON_PROVIDER:
+    app.json_provider_class = NumpyJSONProvider
+    app.json = NumpyJSONProvider(app)
+else:
+    app.json_encoder = NumpyJSONEncoder
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32MB max upload
 
 # Global cropper instance (initialized on first request)
@@ -55,7 +79,7 @@ cropper: AestheticCropper = None
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.gaic.yaml"
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 
 
 def get_cropper() -> AestheticCropper:
@@ -160,10 +184,10 @@ def update_config():
     if "weights" in data:
         current_weights = data["weights"]
         if cropper:
-            # 更新 fusion 模块的权重
+            # 鏇存柊 fusion 妯″潡鐨勬潈閲?
             for k, v in current_weights.items():
                 setattr(cropper.fusion, f"weight_{k}", v)
-            # 重新归一化
+            # 閲嶆柊褰掍竴鍖?
             total = sum(current_weights.values())
             if total > 0:
                 for k in current_weights:
@@ -214,7 +238,7 @@ def crop_image():
 
     try:
         cr = get_cropper()
-        # 确保单图返回 Top-5 候选（临时覆盖显示数量）
+        # 纭繚鍗曞浘杩斿洖 Top-5 鍊欓€夛紙涓存椂瑕嗙洊鏄剧ず鏁伴噺锛?
         original_top_k = getattr(cr.fusion, 'top_k_display', None)
         try:
             cr.fusion.top_k_display = 5
@@ -243,8 +267,8 @@ def crop_image():
         image = load_image(tmp_path)
         h, w = image.shape[:2]
 
-        # ========== 生成可视化图 ==========
-        # 1. 显著性热力图叠加
+        # ========== 鐢熸垚鍙鍖栧浘 ==========
+        # 1. 鏄捐憲鎬х儹鍔涘浘鍙犲姞
         saliency_map = result.saliency_map
         if saliency_map is not None:
             saliency_uint8 = (saliency_map * 255).astype(np.uint8)
@@ -255,7 +279,7 @@ def crop_image():
         else:
             saliency_vis = None
 
-        # 2. 主体检测标注图
+        # 2. 涓讳綋妫€娴嬫爣娉ㄥ浘
         vis_obj = image.copy()
         for obj in result.detected_objects:
             x1, y1, x2, y2 = obj.bbox
@@ -272,10 +296,10 @@ def crop_image():
             )
         object_vis = image_to_base64(vis_obj)
 
-        # 原有可视化：最佳框标注
+        # 鍘熸湁鍙鍖栵細鏈€浣虫鏍囨敞
         vis = draw_bbox(image, result.best_bbox, f"score={result.best_score:.3f}")
 
-        # 准备响应
+        # 鍑嗗鍝嶅簲
         response = {
             "bbox": [int(x) for x in result.best_bbox],
             "score": float(round(float(result.best_score), 4)),
@@ -290,7 +314,7 @@ def crop_image():
                 "subject": float(round(float(result.best_sub_scores.subject), 4)),
                 "technical": float(round(float(result.best_sub_scores.technical), 4)),
                 "area_prior": float(round(float(result.best_sub_scores.area_prior), 4)),
-                # 其他子分数（可选）
+                # 鍏朵粬瀛愬垎鏁帮紙鍙€夛級
                 "thirds": float(round(float(result.best_sub_scores.thirds), 4)),
                 "center_balance": float(
                     round(float(result.best_sub_scores.center_balance), 4)
@@ -305,8 +329,8 @@ def crop_image():
                 "contrast": float(round(float(result.best_sub_scores.contrast), 4)),
                 "saturation": float(round(float(result.best_sub_scores.saturation), 4)),
             },
-            "original_image": image_to_base64(vis),  # 带框标注图
-            "raw_image": image_to_base64(image),  # 新增：无框原始图
+            "original_image": image_to_base64(vis),  # 甯︽鏍囨敞鍥?
+            "raw_image": image_to_base64(image),  # 鏂板锛氭棤妗嗗師濮嬪浘
             "crop_image": image_to_base64(result.best_crop),
             "top_candidates": [
                 {
@@ -342,7 +366,7 @@ def crop_image():
                     scs.positive_prompts = appended
         except Exception:
             pass
-        # 恢复之前的 top_k_display 设置
+        # 鎭㈠涔嬪墠鐨?top_k_display 璁剧疆
         try:
             if original_top_k is not None:
                 cr.fusion.top_k_display = original_top_k
@@ -359,7 +383,7 @@ def batch_process():
     results = []
     cr = get_cropper()
     original_top_k = getattr(cr.fusion, 'top_k_display', None)
-    cr.fusion.top_k_display = 5  # 确保返回 Top5
+    cr.fusion.top_k_display = 5  # 纭繚杩斿洖 Top5
     # read optional user_prompt or pre-converted clip_prompts from form
     user_prompt = request.form.get('user_prompt') if request.form else None
     clip_prompts_raw = request.form.get('clip_prompts') if request.form else None
@@ -512,15 +536,15 @@ def export_batch_report():
 
                 # per-image human readable
                 lines = []
-                lines.append(f'文件: {name_prefix}')
+                lines.append(f'鏂囦欢: {name_prefix}')
                 lines.append(f"bbox: {per['bbox']}")
                 lines.append(f"score: {per['score']}")
-                lines.append('\n各维度得分:')
+                lines.append('\n鍚勭淮搴﹀緱鍒?')
                 for k, v in (per['sub_scores'] or {}).items():
                     lines.append(f'- {k}: {v}')
-                lines.append('\n简要说明:')
+                lines.append('\n绠€瑕佽鏄?')
                 lines.append(per.get('explanation') or '')
-                lines.append('\n详细说明:')
+                lines.append('\n璇︾粏璇存槑:')
                 lines.append(per.get('explanation_full') or '')
                 zf.writestr(f'{name_prefix}_report.txt', '\n'.join(lines))
 
@@ -549,7 +573,7 @@ def assistant_chat():
 
     message = data.get('message', '')
     try:
-        # 不依赖于全局 cropper；直接从配置创建独立的 LLM 助手实例，作为通用咨询服务
+        # 涓嶄緷璧栦簬鍏ㄥ眬 cropper锛涚洿鎺ヤ粠閰嶇疆鍒涘缓鐙珛鐨?LLM 鍔╂墜瀹炰緥锛屼綔涓洪€氱敤鍜ㄨ鏈嶅姟
         from src.utils import load_config
         from src.llm_crop_explainer import LLMCropExplainer
 
@@ -571,15 +595,15 @@ def assistant_chat():
                 import traceback
                 traceback.print_exc()
                 fallback = (
-                    '抱歉，AI 助手暂时无法连接外部模型。你可以询问关于裁剪规则、评分含义，' 
-                    '或上传图片使用“解释裁剪”功能。'
+                    '抱歉，AI 助手暂时无法连接外部模型。你可以询问裁剪规则、'
+                    '评分含义，或上传图片使用解释裁剪功能。'
                 )
                 return jsonify({'reply': fallback, 'llm_used': False})
         else:
-            # LLM 未配置或初始化失败，返回本地规则型回答或建议
+            # LLM 鏈厤缃垨鍒濆鍖栧け璐ワ紝杩斿洖鏈湴瑙勫垯鍨嬪洖绛旀垨寤鸿
             fallback = (
-                'AI 助手未启用或未配置 API key。当前可帮助解读分数含义：例如美学分数越高代表构图/色彩/清晰度更好；' 
-                '你也可以上传图片使用“解释裁剪”功能（配置 LLM 后可获得更详细分析）。'
+                'AI 助手未启用或未配置 API key。当前可以帮助解读分数含义；'
+                '配置 LLM 后可以获得更详细的裁剪分析。'
             )
             return jsonify({'reply': fallback, 'llm_used': False})
     except Exception as e:
@@ -636,11 +660,11 @@ def assistant_stream():
                     for chunk in llm_impl.chat_stream(message, history=history, image_b64=image_b64):
                         yield chunk
                         import time
-                        time.sleep(0.07)  # 关键：分片间隔，强制刷新缓冲区
+                        time.sleep(0.07)  # 鍏抽敭锛氬垎鐗囬棿闅旓紝寮哄埗鍒锋柊缂撳啿鍖?
                 except Exception:
-                    yield "event: error\ndata: LLM 调用失败\n\n"
+                    yield "event: error\ndata: LLM 璋冪敤澶辫触\n\n"
             else:
-                fallback = 'AI 助手未启用或未配置 API key。你可以先在配置中启用 LLM，或上传图片使用本地裁剪解释功能。'
+                fallback = 'AI 助手未启用或未配置 API key。你可以先配置 LLM，或上传图片使用本地裁剪解释功能。'
                 yield f"data: {fallback}\n\n"
             yield "event: done\ndata: \n\n"
 
@@ -754,16 +778,16 @@ def export_report():
 
             # human-readable text report
             text_lines = []
-            text_lines.append('裁剪详细报告')
+            text_lines.append('瑁佸壀璇︾粏鎶ュ憡')
             text_lines.append('-------------------------')
             text_lines.append(f"bbox: {report['bbox']}")
             text_lines.append(f"score: {report['score']}")
-            text_lines.append('\n各维度得分:')
+            text_lines.append('\n鍚勭淮搴﹀緱鍒?')
             for k, v in (report['sub_scores'] or {}).items():
                 text_lines.append(f"- {k}: {v}")
-            text_lines.append('\n简要说明:')
+            text_lines.append('\n绠€瑕佽鏄?')
             text_lines.append(report.get('explanation') or '')
-            text_lines.append('\n详细说明:')
+            text_lines.append('\n璇︾粏璇存槑:')
             text_lines.append(report.get('explanation_full') or '')
             zf.writestr('report.txt', '\n'.join(text_lines))
 
@@ -908,7 +932,7 @@ def export_report_pdf():
         text_y -= 18
 
         sub = res.get('sub_scores') or {}
-        c.drawString(40, text_y, '各维度得分:')
+        c.drawString(40, text_y, '各维度得分')
         text_y -= 14
         for k, v in sub.items():
             if text_y < 80:
@@ -924,7 +948,7 @@ def export_report_pdf():
         c.setFont(title_font, 10)
         text_y -= 18
         brief = res.get('explanation') or ''
-        # 使用按像素宽度换行以避免中文或长行被截断
+        # 浣跨敤鎸夊儚绱犲搴︽崲琛屼互閬垮厤涓枃鎴栭暱琛岃鎴柇
         def wrap_text_by_width(text, font_name, font_size, max_width):
             lines = []
             for para in str(text).split('\n'):

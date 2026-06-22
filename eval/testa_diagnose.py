@@ -47,7 +47,7 @@ def load_ground_truth(dataset_dir: Path) -> dict[str, tuple[int, int, int, int]]
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset-dir", default="testA/testA")
+    parser.add_argument("--dataset-dir", default="testA")
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--output-dir", default="outputs/testa_diagnose")
     args = parser.parse_args()

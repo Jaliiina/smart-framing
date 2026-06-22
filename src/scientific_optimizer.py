@@ -42,6 +42,7 @@ class ScientificCropOptimizer:
         self.large_area_penalty_start = float(cfg.get("large_area_penalty_start", 0.45))
         self.roi_scorer = roi_scorer
         self.semantic_scorer = semantic_scorer
+        self.enable_scene_rescues = bool(cfg.get("enable_scene_rescues", False))
 
         weights = cfg.get("weights", {})
         self.w_fusion = float(weights.get("fusion", 0.35))
@@ -177,17 +178,18 @@ class ScientificCropOptimizer:
                 ):
                     all_candidates.remove(original_best)
                     all_candidates.insert(0, original_best)
-            all_candidates = self._semantic_scenic_rescue(
-                all_candidates,
-                original_best,
-                image.shape[:2],
-            )
-            all_candidates = self._saturated_object_rescue(all_candidates)
-            all_candidates = self._context_scenic_rescue(all_candidates, image.shape[:2])
-            all_candidates = self._left_balanced_subject_rescue(all_candidates, image.shape[:2])
-            all_candidates = self._upper_clean_still_life_rescue(all_candidates, image.shape[:2])
-            all_candidates = self._complete_vertical_still_life_rescue(all_candidates, image.shape[:2])
-            all_candidates = self._tight_two_subject_rescue(all_candidates, image.shape[:2])
+            if self.enable_scene_rescues:
+                all_candidates = self._semantic_scenic_rescue(
+                    all_candidates,
+                    original_best,
+                    image.shape[:2],
+                )
+                all_candidates = self._saturated_object_rescue(all_candidates)
+                all_candidates = self._context_scenic_rescue(all_candidates, image.shape[:2])
+                all_candidates = self._left_balanced_subject_rescue(all_candidates, image.shape[:2])
+                all_candidates = self._upper_clean_still_life_rescue(all_candidates, image.shape[:2])
+                all_candidates = self._complete_vertical_still_life_rescue(all_candidates, image.shape[:2])
+                all_candidates = self._tight_two_subject_rescue(all_candidates, image.shape[:2])
 
         return all_candidates
 
