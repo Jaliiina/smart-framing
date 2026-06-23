@@ -373,6 +373,7 @@
             <div style="display:flex;gap:8px;align-items:center;">
                 <input id="userPromptInput" placeholder="例如：傍晚时分，微笑的人物" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(0,0,0,0.06);" />
                 <button id="convertPromptBtn" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;">转换为 CLIP prompts</button>
+                <button id="clearPromptBtn" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;opacity:0.6;" title="清空">✕ 清空</button>
             </div>
             <div style="margin-top:6px;font-size:12px;opacity:0.55;line-height:1.6;padding:6px 10px;background:rgba(127,165,185,0.06);border-radius:8px;border-left:3px solid rgba(127,165,185,0.25);">
                 💡 输入你想要的画面风格或主题，系统会将其转换为 CLIP 文本向量，引导裁剪结果更符合你的审美偏好。
@@ -468,6 +469,7 @@
             <div style="display:flex;gap:8px;align-items:center;">
                 <input id="batchPromptInput" placeholder="可选：对所有上传图片应用（例如：户外风景）" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(0,0,0,0.06);" />
                 <button id="batchConvertBtn" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;">转换为 CLIP prompts</button>
+                <button id="batchClearPromptBtn" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;opacity:0.6;" title="清空">✕ 清空</button>
             </div>
             <div style="margin-top:6px;font-size:12px;opacity:0.55;line-height:1.6;padding:6px 10px;background:rgba(127,165,185,0.06);border-radius:8px;border-left:3px solid rgba(127,165,185,0.25);">
                 💡 输入你想要的画面风格或主题，系统会将其转换为 CLIP 文本向量，引导裁剪结果更符合你的审美偏好。
@@ -1888,6 +1890,32 @@ function init() {
                 batchConvertBtn.disabled = false;
                 batchConvertBtn.textContent = origText;
             }
+        });
+    }
+
+    // 清空单图 CLIP prompts
+    const clearPromptBtn = $('clearPromptBtn');
+    if (clearPromptBtn) {
+        clearPromptBtn.addEventListener('click', () => {
+            const inp = $('userPromptInput');
+            const disp = $('clipPromptsDisplay');
+            if (inp) inp.value = '';
+            if (disp) disp.textContent = '';
+            window._convertedClipPromptsSingle = null;
+            window._convertedClipPromptsSingleText = null;
+        });
+    }
+
+    // 清空批量 CLIP prompts
+    const batchClearPromptBtn = $('batchClearPromptBtn');
+    if (batchClearPromptBtn) {
+        batchClearPromptBtn.addEventListener('click', () => {
+            const inp = $('batchPromptInput');
+            const disp = $('batchClipPromptsDisplay');
+            if (inp) inp.value = '';
+            if (disp) disp.textContent = '';
+            window._convertedClipPromptsBatch = null;
+            window._convertedClipPromptsBatchText = null;
         });
     }
 
