@@ -1,5 +1,3 @@
-"""Top-level AestheticCropper pipeline orchestrator."""
-
 from __future__ import annotations
 
 import logging
@@ -9,7 +7,6 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Fix ultralytics settings permission issue
 _yolo_settings_dir = str(Path.home() / ".config" / "ultralytics")
 os.makedirs(_yolo_settings_dir, exist_ok=True)
 os.environ.setdefault("YOLO_SETTINGS_DIR", _yolo_settings_dir)
@@ -34,21 +31,14 @@ logger = logging.getLogger(__name__)
 
 
 class AestheticCropper:
-    """Main pipeline: generate candidates, score, fuse, and output results."""
 
     def __init__(self, config_path: str = "config.yaml", config: Optional[dict] = None):
-        """Initialize the AestheticCropper pipeline.
 
-        Args:
-            config_path: Path to config.yaml.
-            config: Optional pre-loaded config dict (overrides config_path).
-        """
         if config is not None:
             self.config = config
         else:
             self.config = load_config(config_path)
 
-        # Initialize all modules (lazy model loading)
         from .candidate_generation import CandidateGenerator
         from .saliency_detector import SaliencyDetector
         from .aesthetic_scorer import AestheticScorer
@@ -124,7 +114,6 @@ class AestheticCropper:
             except Exception as exc:
                 logger.warning(f"Failed to load beauty judge: {exc}")
 
-        # Print model info
         u2net_cfg = self.config.get("models", {}).get("u2net", {})
         yolo_cfg = self.config.get("models", {}).get("yolo", {})
         aesthetic_cfg = self.config.get("models", {}).get("aesthetic", {})
@@ -151,41 +140,20 @@ class AestheticCropper:
         )
 
     def process(self, image_path: str) -> CropResult:
-        """Process a single image through the full pipeline.
-
-        Steps:
-          0. Intent classification (multimodal LLM) → choose strategy
-          1. Run U2-Net once → saliency map
-          2. Run YOLOv8 once → detected objects
-          3. Generate candidates (grid + saliency-guided)
-          4. Score each candidate
-          5. Fuse scores and select best
-          6. Generate explanation
-
-        Args:
-            image_path: Path to input image.
-
-        Returns:
-            CropResult with best bbox, crop, scores, explanation, etc.
-        """
         start_time = time.time()
 
         image = load_image(image_path)
         h, w = image.shape[:2]
-        # 初始化兜底，解决best_crop未定义报错
         best_crop = image.copy()
         best_bbox = (0, 0, w, h)
 
-        # --- Step 1: Run dual saliency (U2-Net + fallback) ---
         saliency_map, fallback_sal_map, is_uniform, fallback_uniform = (
             self.saliency_det.detect_dual(image)
         )
 
-        # --- Step 2: Run YOLOv8 once → detected objects ---
         detected_objects = self.subject_det.detect(image, saliency_map=saliency_map)
         has_subject = len(detected_objects) > 0
 
-        # --- Step 3: Generate candidates (grid + saliency-guided) ---
         candidates = self.candidate_gen.generate(
             image, saliency_map, detected_objects=detected_objects
         )
@@ -194,7 +162,6 @@ class AestheticCropper:
         if len(candidates) == 0:
             candidates = [(0, 0, w, h)]
 
-        # Compute per-candidate scores for both saliency maps
         u2net_saliency_scores = self.saliency_det.score_candidates(
             saliency_map, candidates, image.shape
         )
@@ -206,32 +173,24 @@ class AestheticCropper:
             else u2net_saliency_scores
         )
 
-        # --- Step 4: Score each candidate ---
-        # 4a. Aesthetic scores
         aesthetic_scores = self.aesthetic_scorer.score_candidates(image, candidates)
 
-        # 4b. Saliency preservation scores (primary map)
         saliency_scores = u2net_saliency_scores
 
-        # 4b-alt. Dual saliency agreement scores (fallback map, used in fusion)
         dual_saliency_scores = fallback_saliency_scores
 
-        # 4c. Composition scores
         composition_scores = self.comp_scorer.score_candidates(
             image, candidates, saliency_map, detected_objects
         )
 
-        # 4d. Subject completeness scores
         subject_scores = self.subject_det.score_candidates(
             candidates, detected_objects, image.shape
         )
         has_subject = any(score is not None for score in subject_scores)
         subject_score_mode = getattr(self.subject_det, "last_score_mode", "subject")
 
-        # 4e. Technical quality scores
         technical_scores = self.tech_scorer.score_candidates(image, candidates)
 
-        # 4f. Semantic subjectness and distractor-aware ROI/discard scores
         semantic_heatmaps = self.semantic_heatmap_scorer.build_heatmaps(image)
         subjectness_maps = self.subjectness_scorer.build_maps(
             image=image,
@@ -252,7 +211,6 @@ class AestheticCropper:
             semantic_scores=semantic_scores,
         )
 
-        # --- Step 5: Fuse scores and select best ---
         best, top_k, all_ranked = self.fusion.fuse(
             bboxes=candidates,
             aesthetic_scores=aesthetic_scores,
@@ -319,19 +277,16 @@ class AestheticCropper:
             candidates=all_candidates,
             image_shape=image.shape[:2],
         )
-        # 安全读取最优候选，边界保护
         if len(all_candidates) > 0:
             best = all_candidates[0]
             top_k = all_candidates[: self.fusion.top_k_display]
             x1, y1, x2, y2 = best.bbox
-            # 裁剪坐标防越界
             x1 = max(0, x1)
             y1 = max(0, y1)
             x2 = min(w, x2)
             y2 = min(h, y2)
             best_crop = image[y1:y2, x1:x2]
 
-        # --- Step 6: Generate explanation ---
         explanation_short, explanation_full = self.explainer.generate_with_image(
             origin_image=image,
             crop_image=best_crop,
@@ -340,7 +295,6 @@ class AestheticCropper:
             has_subject=has_subject
         )
 
-        # --- Step 7: Build result ---
         elapsed = time.time() - start_time
         logger.info(
             f"Processed {image_path} in {elapsed:.2f}s | "
@@ -354,8 +308,8 @@ class AestheticCropper:
             best_score=best.final_score,
             best_sub_scores=best.sub_scores,
             top_candidates=top_k,
-            explanation=explanation_short,  # 兼容旧字段，存短文案
-            explanation_full=explanation_full, # 新增长报告文案
+            explanation=explanation_short,  
+            explanation_full=explanation_full, 
             saliency_map=saliency_map,
             detected_objects=detected_objects,
             all_candidates=all_candidates,
@@ -367,7 +321,6 @@ class AestheticCropper:
         candidates: List[CandidateResult],
         image_shape: Tuple[int, int],
     ) -> List[CandidateResult]:
-        """Prefer an equally complete crop that removes vivid foreground clutter."""
         cfg = self.config.get("saturated_distractor_guard", {})
         if not cfg.get("enabled", True) or len(candidates) <= 1:
             return candidates
@@ -446,7 +399,6 @@ class AestheticCropper:
         image: np.ndarray,
         bbox: BBox,
     ) -> Optional[BBox]:
-        """Trim a vivid lower-side distractor that is partly inside the crop."""
         x1, y1, x2, y2 = bbox
         crop = image[max(0, y1):y2, max(0, x1):x2]
         if crop.size == 0:
@@ -501,7 +453,6 @@ class AestheticCropper:
         image: np.ndarray,
         candidates: List[CandidateResult],
     ) -> List[CandidateResult]:
-        """Rerank near-final candidates with generic visual quality signals."""
         cfg = self.config.get("final_quality_rerank", {})
         if not cfg.get("enabled", False) or len(candidates) <= 1:
             return candidates
@@ -541,16 +492,6 @@ class AestheticCropper:
                         sub_scores=seed.sub_scores,
                     )
                 )
-            # paper_line = self._paper_line_art_variant(image, seed.bbox)
-            # if paper_line is not None and paper_line not in seen:
-            #     seen.add(paper_line)
-            #     pool.append(
-            #         CandidateResult(
-            #             bbox=paper_line,
-            #             final_score=float(seed.final_score * variant_base_decay),
-            #             sub_scores=seed.sub_scores,
-            #         )
-            #     )
 
         scored = []
         original_best = pool[0]
@@ -596,11 +537,7 @@ class AestheticCropper:
         scored: List[Tuple[float, float, CandidateResult]],
         original_best: CandidateResult,
     ) -> Optional[CandidateResult]:
-        """Optional scene-specific rescue hook kept off by default.
 
-        The default pipeline should stay generic; this hook only exists so
-        a future experiment can re-enable scene priors explicitly.
-        """
         _ = image
         _ = scored
         _ = original_best
@@ -675,85 +612,6 @@ class AestheticCropper:
         )
         return _clamped_min_size_bbox(nb, h, w)
 
-    # @staticmethod
-    # def _paper_line_art_variant(
-    #     image: np.ndarray,
-    #     bbox: BBox,
-    # ) -> Optional[BBox]:
-    #     """Tighten high-key paper/line-art crops around the main drawn structure."""
-    #     x1, y1, x2, y2 = bbox
-    #     crop = image[max(0, y1):y2, max(0, x1):x2]
-    #     if crop.size == 0:
-    #         return None
-    #     h, w = image.shape[:2]
-    #     ch, cw = crop.shape[:2]
-    #     if ch < 48 or cw < 48:
-    #         return None
-
-    #     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.float32)
-    #     sat = hsv[:, :, 1] / 255.0
-    #     val = hsv[:, :, 2] / 255.0
-    #     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    #     edges = cv2.GaussianBlur(
-    #         cv2.Canny(gray, 55, 150).astype(np.float32) / 255.0,
-    #         (0, 0),
-    #         1.0,
-    #     )
-    #     paper = (sat < 0.22) & (val > 0.66)
-    #     if float(paper.mean()) < 0.46 or float(sat.mean()) > 0.16 or float(val.mean()) < 0.58:
-    #         return None
-
-    #     structure = (val < 0.58) & (sat < 0.30)
-    #     structure = cv2.morphologyEx(
-    #         structure.astype(np.uint8),
-    #         cv2.MORPH_OPEN,
-    #         np.ones((3, 3), dtype=np.uint8),
-    #     )
-    #     n_labels, labels, stats, _centroids = cv2.connectedComponentsWithStats(
-    #         structure,
-    #         8,
-    #     )
-    #     if n_labels <= 1:
-    #         return None
-
-    #     crop_area = max(1, ch * cw)
-    #     components = []
-    #     for label in range(1, n_labels):
-    #         area = int(stats[label, cv2.CC_STAT_AREA])
-    #         if area < max(80, int(0.008 * crop_area)):
-    #             continue
-    #         lx = int(stats[label, cv2.CC_STAT_LEFT])
-    #         ly = int(stats[label, cv2.CC_STAT_TOP])
-    #         lw = int(stats[label, cv2.CC_STAT_WIDTH])
-    #         lh = int(stats[label, cv2.CC_STAT_HEIGHT])
-    #         area_ratio = area / crop_area
-    #         box_ratio = (lw * lh) / crop_area
-    #         if area_ratio > 0.42 or box_ratio > 0.88:
-    #             continue
-    #         components.append((area, lx, ly, lx + lw - 1, ly + lh - 1))
-    #     if not components:
-    #         return None
-
-    #     components.sort(reverse=True)
-    #     _area, ax1, ay1, ax2, ay2 = components[0]
-    #     aw, ah = ax2 - ax1 + 1, ay2 - ay1 + 1
-    #     if aw < 0.22 * cw or ah < 0.30 * ch:
-    #         return None
-
-    #     pad_x = int(round(max(12, 0.18 * aw)))
-    #     pad_top = int(round(max(12, 0.32 * ah)))
-    #     pad_bottom = int(round(max(10, 0.12 * ah)))
-    #     nx1 = x1 + max(0, ax1 - pad_x)
-    #     ny1 = y1 + max(0, ay1 - pad_top)
-    #     nx2 = x1 + min(cw, ax2 + pad_x)
-    #     ny2 = y1 + min(ch, ay2 + pad_bottom)
-
-    #     old_area = max(1, (x2 - x1) * (y2 - y1))
-    #     new_area = max(1, (nx2 - nx1) * (ny2 - ny1))
-    #     if new_area > old_area * 0.88 or new_area < old_area * 0.30:
-    #         return None
-    #     return _clamped_min_size_bbox((nx1, ny1, nx2, ny2), h, w)
-
     def _generic_crop_quality(
         self,
         image: np.ndarray,
@@ -786,11 +644,8 @@ class AestheticCropper:
         )
         boundary_clean = 1.0 - float(np.clip(sub.boundary_cut, 0.0, 1.0))
         border_residue = self._border_residue_penalty(crop)
-        # saturated_edge_residue = self._saturated_edge_residue_penalty(crop)
         cut_risk = self._structure_cut_penalty(crop)
         foreground_residue = self._foreground_residue_penalty(crop)
-        # vertical_position = self._vertical_position_penalty(candidate.bbox, image.shape[:2])
-        # paper_margin = self._paper_margin_penalty(crop)
         completeness = max(sub.subject, sub.subjectness)
         artifact_clean = 1.0 - max(artifact, 0.35 * foreground_residue)
 
@@ -822,65 +677,10 @@ class AestheticCropper:
             "completeness": float(np.clip(completeness, 0.0, 1.0)),
             "area": float(np.clip(area_score, 0.0, 1.0)),
             "residue": float(np.clip(1.0 - max(border_residue, foreground_residue), 0.0, 1.0)),
-            # "residue": float(
-            #     np.clip(
-            #         1.0
-            #         - max(
-            #             border_residue,
-            #             foreground_residue,
-            #             saturated_edge_residue,
-            #             paper_margin,
-            #         ),
-            #         0.0,
-            #         1.0,
-            #     )
-            # ),
         }
         return float(np.clip(content_terms - penalty, 0.0, 1.0)), axes
 
     @staticmethod
-    # def _vertical_position_penalty(bbox: BBox, image_shape: Tuple[int, int]) -> float:
-    #     h, w = image_shape
-    #     x1, y1, x2, y2 = bbox
-    #     bw, bh = max(1, x2 - x1), max(1, y2 - y1)
-    #     cy = ((y1 + y2) / 2.0) / max(1, h)
-    #     area_ratio = (bw * bh) / max(1, h * w)
-    #     if area_ratio > 0.50:
-    #         return 0.0
-    #     return float(np.clip((cy - 0.62) / 0.18, 0.0, 1.0))
-
-    # @staticmethod
-    # def _paper_margin_penalty(crop: np.ndarray) -> float:
-    #     h, w = crop.shape[:2]
-    #     if h < 48 or w < 48:
-    #         return 0.0
-    #     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.float32)
-    #     sat = hsv[:, :, 1] / 255.0
-    #     val = hsv[:, :, 2] / 255.0
-    #     if float(sat.mean()) > 0.16 or float(val.mean()) < 0.56:
-    #         return 0.0
-    #     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    #     edges = cv2.GaussianBlur(
-    #         cv2.Canny(gray, 55, 150).astype(np.float32) / 255.0,
-    #         (0, 0),
-    #         1.0,
-    #     )
-    #     blank = (sat < 0.18) & (val > 0.66) & (edges < 0.04)
-    #     if float(blank.mean()) < 0.38:
-    #         return 0.0
-    #     sx = max(6, int(round(w * 0.33)))
-    #     sy = max(6, int(round(h * 0.16)))
-    #     left_blank = float(blank[:, :sx].mean())
-    #     bottom_blank = float(blank[-sy:, :].mean())
-    #     return float(
-    #         np.clip(
-    #             0.55 * left_blank + 0.35 * float(blank.mean()) + 0.10 * bottom_blank - 0.55,
-    #             0.0,
-    #             1.0,
-    #         )
-    #     )
-
-    # @staticmethod
     def _pareto_balance_score(axes: Dict[str, float]) -> float:
         if not axes:
             return 0.0
@@ -891,7 +691,6 @@ class AestheticCropper:
 
     @staticmethod
     def _border_residue_penalty(crop: np.ndarray) -> float:
-        """Detect visually distracting partial objects close to crop borders."""
         h, w = crop.shape[:2]
         if h < 12 or w < 12:
             return 0.0
@@ -913,43 +712,7 @@ class AestheticCropper:
         return float(np.clip(residue.mean() / 0.055, 0.0, 1.0))
 
     @staticmethod
-    # def _saturated_edge_residue_penalty(crop: np.ndarray) -> float:
-    #     """Penalize clipped high-saturation color blobs at crop edges."""
-    #     h, w = crop.shape[:2]
-    #     if h < 16 or w < 16:
-    #         return 0.0
-    #     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.float32)
-    #     sat = hsv[:, :, 1] / 255.0
-    #     val = hsv[:, :, 2] / 255.0
-    #     hue = hsv[:, :, 0]
-    #     strip = max(4, int(min(h, w) * 0.08))
-    #     border = np.zeros((h, w), dtype=bool)
-    #     border[:strip, :] = True
-    #     border[-strip:, :] = True
-    #     border[:, :strip] = True
-    #     border[:, -strip:] = True
-    #     warm_or_vivid = ((hue < 25) | (hue > 165) | (sat > 0.72))
-    #     mask = (sat > 0.50) & (val > 0.28) & warm_or_vivid
-    #     edge_mask = (mask & border).astype(np.uint8)
-    #     if int(edge_mask.sum()) == 0:
-    #         return 0.0
-    #     n_labels, labels, stats, _centroids = cv2.connectedComponentsWithStats(
-    #         edge_mask,
-    #         8,
-    #     )
-    #     crop_area = max(1, h * w)
-    #     penalty = 0.0
-    #     for label in range(1, n_labels):
-    #         area = int(stats[label, cv2.CC_STAT_AREA])
-    #         area_ratio = area / crop_area
-    #         if area_ratio < 0.001:
-    #             continue
-    #         penalty = max(penalty, float(np.clip(area_ratio / 0.035, 0.0, 1.0)))
-    #     return penalty
-
-    # @staticmethod
     def _foreground_residue_penalty(crop: np.ndarray) -> float:
-        """Penalize small distracting blobs in lower/side foreground regions."""
         h, w = crop.shape[:2]
         if h < 16 or w < 16:
             return 0.0
@@ -986,7 +749,6 @@ class AestheticCropper:
 
     @staticmethod
     def _structure_cut_penalty(crop: np.ndarray) -> float:
-        """Penalize strong structures that terminate exactly on crop edges."""
         h, w = crop.shape[:2]
         if h < 12 or w < 12:
             return 0.0
@@ -1010,7 +772,6 @@ class AestheticCropper:
         candidates: List[CandidateResult],
         image_shape: Tuple[int, int],
     ) -> List[CandidateResult]:
-        """Optionally rerank final candidates for a known output style."""
         cfg = self.config.get("output_calibration", {})
         if not cfg.get("enabled", False) or not candidates:
             return candidates
@@ -1117,12 +878,7 @@ class AestheticCropper:
         self,
         ranked_lists: List[List[CandidateResult]],
     ) -> List[CandidateResult]:
-        """Fuse several ranking passes with reciprocal-rank aggregation.
 
-        This is intentionally rank-based rather than score-based: the goal is to
-        reward crops that survive multiple independent selection views, instead of
-        trusting one calibrated scalar score.
-        """
         cfg = self.config.get("consensus_rank_fusion", {})
         if not cfg.get("enabled", True):
             for ranked in ranked_lists:
@@ -1165,16 +921,7 @@ class AestheticCropper:
         output_dir: str,
         extensions: Tuple[str, ...] = (".jpg", ".jpeg", ".png", ".bmp", ".tiff"),
     ) -> List[CropResult]:
-        """Process all images in a directory.
 
-        Args:
-            image_dir: Directory containing input images.
-            output_dir: Directory to save output files.
-            extensions: Accepted image file extensions.
-
-        Returns:
-            List of CropResult for each processed image.
-        """
         img_path = Path(image_dir)
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
@@ -1188,17 +935,13 @@ class AestheticCropper:
             result = self.process(str(img_file))
             results.append(result)
 
-            # Save outputs
             name = img_file.stem
-            # Visualization with bbox
             image = load_image(str(img_file))
             vis = draw_bbox(image, result.best_bbox, f"score={result.best_score:.3f}")
             save_image(vis, str(out_path / f"{name}_vis.jpg"))
 
-            # Cropped image
             save_image(result.best_crop, str(out_path / f"{name}_crop.jpg"))
 
-            # Coordinates file
             coord_file = out_path / f"{name}_coords.txt"
             coord_file.write_text(
                 f"bbox: {result.best_bbox}\n"
@@ -1217,19 +960,7 @@ class AestheticCropper:
         image_path: str,
         custom_weights: Dict[str, float],
     ) -> CropResult:
-        """Process an image with custom fusion weights (for ablation/grid search).
 
-        Temporarily disables intent classification so that custom weights
-        are not overridden by the strategy router.
-
-        Args:
-            image_path: Path to input image.
-            custom_weights: Dict of dimension weights, e.g. {"aesthetic": 0.5, ...}.
-
-        Returns:
-            CropResult with custom-weighted fusion.
-        """
-        # Temporarily override fusion weights
         original_weights = {
             "aesthetic": self.fusion.weight_aesthetic,
             "saliency": self.fusion.weight_saliency,
@@ -1253,17 +984,8 @@ class AestheticCropper:
                 setattr(self.fusion, f"weight_{k}", v)
 
     def visualize_result(self, image_path: str, result: CropResult) -> np.ndarray:
-        """Create a visualization image with the best bbox + top-K overlays.
 
-        Args:
-            image_path: Path to the original image.
-            result: CropResult from process().
-
-        Returns:
-            Visualization image (BGR).
-        """
         image = load_image(image_path)
-        # Draw top-K candidates in different colors
         top_bboxes = [c.bbox for c in result.top_candidates]
         labels = [
             f"#{i+1} score={c.final_score:.3f}"

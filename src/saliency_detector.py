@@ -1,5 +1,3 @@
-"""U2-Net saliency detection wrapper with scoring."""
-
 from __future__ import annotations
 
 import logging
@@ -16,13 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class SaliencyDetector:
-    """Wrap U2-Net (or U2-Net-lite) for saliency detection.
-
-    Provides:
-    - Full-image saliency map (run once, shared across candidates)
-    - Per-candidate saliency preservation score
-    """
-
     def __init__(self, config: dict):
         u2cfg = config.get("models", {}).get("u2net", {})
         self.weights_path: str = u2cfg.get("weights_path", "models/u2net.pth")
@@ -40,7 +31,6 @@ class SaliencyDetector:
 
     @staticmethod
     def _resolve_device(requested_device: str) -> str:
-        """Return a CUDA device only when PyTorch has CUDA support available."""
         device = str(requested_device).lower()
         if device == "cuda":
             try:
@@ -56,15 +46,7 @@ class SaliencyDetector:
     def detect_dual(
         self, image: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, bool, bool]:
-        """Run both U2-Net and fallback saliency detection.
 
-        Args:
-            image: BGR image (H, W, 3).
-
-        Returns:
-            (u2net_map, fallback_map, u2net_is_uniform, fallback_is_uniform).
-            If U2-Net is unavailable, u2net_map equals fallback_map.
-        """
         self._load_model()
 
         if self._model is None or self.force_fallback:
@@ -79,7 +61,6 @@ class SaliencyDetector:
         return u2net_map, fallback_map, u2net_uniform, fallback_uniform
 
     def _load_model(self):
-        """Lazily load the U2-Net model."""
         if self._model_loaded:
             return
         try:
@@ -109,16 +90,7 @@ class SaliencyDetector:
         self._model_loaded = True
 
     def detect(self, image: np.ndarray) -> Tuple[np.ndarray, bool]:
-        """Run saliency detection on the image.
-
-        Args:
-            image: BGR image (H, W, 3).
-
-        Returns:
-            (saliency_map, is_uniform):
-                saliency_map: (H, W) float32 in [0, 1].
-                is_uniform: True if the map is too uniform (fallback needed).
-        """
+    
         self._load_model()
 
         if self.force_fallback or self._model is None:
@@ -126,7 +98,6 @@ class SaliencyDetector:
         else:
             sal = self._detect_u2net(image)
 
-        # Check uniformity
         is_uniform = float(sal.std()) < self.uniform_std_threshold
         return sal, is_uniform
 
@@ -137,7 +108,6 @@ class SaliencyDetector:
         self.device = self._resolve_device(self.device)
 
         h, w = image.shape[:2]
-        # Preprocess: resize to input_size x input_size
         inp = cv2.resize(image, (self.input_size, self.input_size))
         inp = inp.astype(np.float32) / 255.0
         inp = (inp - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
@@ -155,7 +125,6 @@ class SaliencyDetector:
 
     @staticmethod
     def _detect_fallback(image: np.ndarray) -> np.ndarray:
-        """Fallback CV-based saliency (from the original smart_framing.py)."""
         img = cv2.cvtColor(image, cv2.COLOR_BGR2Lab)
         l, a, b = cv2.split(img)
         blur = cv2.GaussianBlur(img, (0, 0), 7)
@@ -175,27 +144,12 @@ class SaliencyDetector:
         bboxes: List[BBox],
         image_shape: Tuple[int, int],
     ) -> List[float]:
-        """Compute saliency preservation score for each candidate bbox.
 
-        Score = 0.30 * coverage_norm + 0.35 * density
-                - 0.30 * boundary_cut - 0.30 * center_offset
-
-        coverage_norm normalizes coverage by bbox area to remove size bias.
-
-        Args:
-            saliency_map: (H, W) float32 in [0, 1].
-            bboxes: List of candidate bboxes.
-            image_shape: (H, W) of the original image.
-
-        Returns:
-            List of saliency preservation scores.
-        """
         h, w = image_shape[:2]
         img_area = max(1, h * w)
         total_sal = saliency_map.sum() + 1e-9
         scores = []
 
-        # Precompute boundary strip mask width
         strip_w = max(2, min(h, w) // 50)
 
         for bbox in bboxes:
@@ -203,15 +157,11 @@ class SaliencyDetector:
             bbox_area = (x2 - x1) * (y2 - y1)
             area_ratio = bbox_area / img_area
 
-            # 1. Coverage: fraction of total saliency inside bbox
             region = saliency_map[max(0, y1):y2, max(0, x1):x2]
             coverage = float(region.sum()) / total_sal
-            # Normalize coverage by area_ratio to remove size bias:
-            # A small bbox with high coverage_per_area is better than a large one.
             coverage_norm = coverage / max(area_ratio, 0.05)
             density = float(region.mean()) if region.size > 0 else 0.0
 
-            # 2. Center offset: distance from saliency centroid to bbox visual center
             region_sum = region.sum() + 1e-9
             local_h, local_w = region.shape[:2]
             if local_h > 0 and local_w > 0:
@@ -225,7 +175,6 @@ class SaliencyDetector:
             diag = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) + 1e-6
             center_offset = math.sqrt((sal_cx - bbox_cx) ** 2 + (sal_cy - bbox_cy) ** 2) / diag
 
-            # 3. Boundary cut: average saliency on boundary strip
             boundary_sal = 0.0
             boundary_count = 0
             # Top strip
@@ -263,17 +212,7 @@ class SaliencyDetector:
         bboxes: List[BBox],
         image_shape: Tuple[int, int],
     ) -> Tuple[List[float], List[float]]:
-        """Score candidates with both U2Net and fallback saliency maps.
 
-        Args:
-            u2net_map: (H, W) U2Net saliency map.
-            fallback_map: (H, W) fallback CV saliency map.
-            bboxes: List of candidate bboxes.
-            image_shape: (H, W) of the original image.
-
-        Returns:
-            (u2net_scores, fallback_scores): saliency preservation scores per candidate.
-        """
         u2_scores = self.score_candidates(u2net_map, bboxes, image_shape)
         fb_scores = self.score_candidates(fallback_map, bboxes, image_shape)
         return u2_scores, fb_scores

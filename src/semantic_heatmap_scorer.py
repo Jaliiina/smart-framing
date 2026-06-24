@@ -1,12 +1,3 @@
-"""CLIP sliding-window semantic heatmap for open-vocabulary subject localization.
-
-Crop-level CLIP scores can tell whether a candidate is semantically plausible,
-but they do not localize the desired subject. This module builds a coarse
-positive/negative semantic heatmap over the whole image, then upsamples it to
-the original resolution so ROI and subjectness scoring can use spatial
-evidence.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -30,7 +21,6 @@ class SemanticHeatmaps:
 
 
 class SemanticHeatmapScorer:
-    """Build coarse CLIP heatmaps with generic positive/negative prompts."""
 
     def __init__(self, config: dict):
         cfg = config.get("semantic_heatmap", {})

@@ -1,10 +1,3 @@
-"""Open-vocabulary semantic scoring for crop candidates.
-
-The scorer uses CLIP prompts to separate aesthetic subjects from visually
-salient but undesirable foreground clutter. It is generic: prompts describe
-scene/quality concepts rather than individual test images.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -20,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class SemanticCropScorer:
-    """Score crops with positive/negative CLIP prompt groups."""
 
     def __init__(self, config: dict):
         cfg = config.get("semantic_crop", {})
@@ -92,7 +84,6 @@ class SemanticCropScorer:
         self._loaded = True
 
     def set_positive_prompts(self, prompts: List[str]) -> None:
-        """Replace positive prompts and refresh cached CLIP text features."""
         self.positive_prompts = list(prompts)
         if not self._loaded:
             return
@@ -181,11 +172,7 @@ class SemanticCropScorer:
         return scores
 
     def _context_positive_indices(self, image: np.ndarray) -> torch.Tensor:
-        """Select positive prompts that match the whole image context.
 
-        A global context pass prevents a candidate from winning only because it
-        matches an unrelated generic prompt such as architecture or flat color.
-        """
         from PIL import Image
 
         if self._model is None or self._preprocess is None or self._pos is None:

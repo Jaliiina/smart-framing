@@ -1,5 +1,3 @@
-"""LAION Aesthetic Predictor wrapper with fallback to hand-crafted features."""
-
 from __future__ import annotations
 
 import logging
@@ -16,10 +14,6 @@ from .utils import BBox
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Aesthetic MLP matching aesthetic_predictor.pth key names: layers.0, layers.2...
-# ---------------------------------------------------------------------------
 class _AestheticMLP(nn.Module):
     def __init__(self, embed_dim: int):
         super().__init__()
@@ -39,12 +33,7 @@ class _AestheticMLP(nn.Module):
             x = layer(x)
         return x
 
-
-# ---------------------------------------------------------------------------
-# AestheticScorer
-# ---------------------------------------------------------------------------
 class AestheticScorer:
-    """Score candidate crops using LAION Aesthetic Predictor or fallback."""
 
     def __init__(self, config: dict):
         acfg = config.get("models", {}).get("aesthetic", {})
@@ -88,7 +77,7 @@ class AestheticScorer:
         if self._model_loaded:
             return
         try:
-            import clip  # type: ignore
+            import clip  
 
             need_clip = self.use_laion_predictor or self.use_clip_prompt_fallback
             if need_clip:
@@ -96,7 +85,6 @@ class AestheticScorer:
                     self.clip_model, device=self.device
                 )
 
-            # Branch 1: LAION predictor explicitly enabled
             if self.use_laion_predictor:
                 if Path(self.model_path).exists() and self._clip_model is not None:
                     state = torch.load(self.model_path, map_location=self.device)
@@ -118,7 +106,7 @@ class AestheticScorer:
                     if self.use_clip_prompt_fallback and self._clip_model is not None:
                         self._load_prompt_features(clip)
                         logger.info("Using CLIP prompt-based aesthetic fallback.")
-            # Branch 2: LAION disabled — use CLIP prompts or hand-crafted fallback
+
             elif self._clip_model is not None and self.use_clip_prompt_fallback:
                 positive_tokens = clip.tokenize(self.positive_prompts).to(self.device)
                 negative_tokens = clip.tokenize(self.negative_prompts).to(self.device)
@@ -157,7 +145,6 @@ class AestheticScorer:
         image: np.ndarray,
         bboxes: List[BBox],
     ) -> List[float]:
-        """Score each candidate crop for aesthetic quality."""
         self._load_model()
 
         if self._clip_model is not None and self._aesthetic_head is not None:
@@ -174,7 +161,6 @@ class AestheticScorer:
             return [0.5] * len(bboxes)
 
     def _score_clip(self, image: np.ndarray, bboxes: List[BBox]) -> List[float]:
-        """Score using CLIP + aesthetic head, optionally blended with prompts."""
         from PIL import Image
 
         crops = []
@@ -222,7 +208,6 @@ class AestheticScorer:
         secondary: torch.Tensor,
         secondary_weight: float,
     ) -> torch.Tensor:
-        """Min-max normalize two score vectors inside a batch before blending."""
         weight = min(1.0, max(0.0, float(secondary_weight)))
 
         def norm(values: torch.Tensor) -> torch.Tensor:
@@ -237,7 +222,6 @@ class AestheticScorer:
     def _score_clip_prompts(
         self, image: np.ndarray, bboxes: List[BBox]
     ) -> List[float]:
-        """Score semantic framing quality using positive and negative prompts."""
         from PIL import Image
 
         crops = []
@@ -263,7 +247,6 @@ class AestheticScorer:
 
     @staticmethod
     def _score_fallback(image: np.ndarray, bboxes: List[BBox]) -> List[float]:
-        """Fallback: use hand-crafted features from original smart_framing.py."""
         scores = []
         for bbox in bboxes:
             x1, y1, x2, y2 = bbox

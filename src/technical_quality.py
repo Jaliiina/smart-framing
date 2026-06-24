@@ -1,5 +1,3 @@
-"""Technical quality scoring with simple distraction penalties."""
-
 from __future__ import annotations
 
 import math
@@ -12,7 +10,6 @@ from .utils import BBox
 
 
 class TechnicalQualityScorer:
-    """Score candidates on basic visual quality metrics."""
 
     def __init__(self, config: dict):
         tcfg = config.get("technical_quality", {})
@@ -38,15 +35,7 @@ class TechnicalQualityScorer:
         image: np.ndarray,
         bboxes: List[BBox],
     ) -> List[Tuple[float, Dict[str, float]]]:
-        """Score each candidate on technical quality.
 
-        Args:
-            image: Original BGR image.
-            bboxes: Candidate bboxes.
-
-        Returns:
-            List of (total_technical_score, sub_score_dict) per candidate.
-        """
         scores = []
         for bbox in bboxes:
             sub = self._score_single(image, bbox)
@@ -62,7 +51,6 @@ class TechnicalQualityScorer:
         return scores
 
     def _score_single(self, image: np.ndarray, bbox: BBox) -> Dict[str, float]:
-        """Compute technical quality sub-scores for one candidate."""
         x1, y1, x2, y2 = bbox
         crop = image[y1:y2, x1:x2]
         h, w = crop.shape[:2]
@@ -78,22 +66,16 @@ class TechnicalQualityScorer:
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY).astype(np.float32)
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.float32)
 
-        # 1. Sharpness: Laplacian variance
         lap = cv2.Laplacian(gray, cv2.CV_32F)
         sharpness_var = float(lap.var())
-        # Normalize: typical range 0-2000+, map to 0-1
         sharpness = min(1.0, sharpness_var / 500.0)
 
-        # 2. Brightness: mean luminance
         mean_brightness = float(gray.mean())
         brightness = self._interval_score(mean_brightness, self.brightness_min, self.brightness_max)
 
-        # 3. Contrast: standard deviation of luminance
         contrast_std = float(gray.std())
-        # Normalize: typical range 0-128, map to 0-1
         contrast = min(1.0, contrast_std / 64.0)
 
-        # 4. Saturation: mean HSV saturation
         mean_saturation = float(hsv[:, :, 1].mean())
         saturation = self._interval_score(mean_saturation, self.saturation_min, self.saturation_max)
 
@@ -128,14 +110,7 @@ class TechnicalQualityScorer:
         hsv: np.ndarray,
         crop: np.ndarray,
     ) -> float:
-        """Estimate whether a crop is dominated by border/foreground junk.
-
-        This is deliberately heuristic: TestB contains scenes where small,
-        high-contrast objects near the bottom or sides can hijack the scoring
-        even though they are not an aesthetic subject. We penalize crops whose
-        bottom band or border has much stronger saturated/edge response than
-        the crop interior.
-        """
+        
         h, w = gray.shape[:2]
         if h < 20 or w < 20:
             return 0.0
@@ -166,8 +141,6 @@ class TechnicalQualityScorer:
         bottom_excess = max(0.0, float(bottom.mean()) - interior_mean - 0.08)
         border_excess = max(0.0, border_mean - interior_mean - 0.06)
 
-        # A small saturated object touching the lower edge is especially likely
-        # to be debris/foreground clutter rather than the intended composition.
         bottom_hot = float(((bottom > 0.62) & (sat[h - band_h :, :] > 90)).mean())
         lower_corner_hot = float(
             (

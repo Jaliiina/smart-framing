@@ -1,10 +1,3 @@
-"""Subjectness and distractor map estimation.
-
-This module decouples visual saliency from aesthetic subjectness. Salient
-foreground clutter can be penalized through a distractor map, while coherent
-objects/structures are promoted through a subjectness map.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -25,7 +18,6 @@ class SubjectnessMaps:
 
 
 class SubjectnessScorer:
-    """Build subjectness/distractor maps and per-candidate scores."""
 
     def __init__(self, config: dict):
         cfg = config.get("subjectness", {})

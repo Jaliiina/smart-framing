@@ -1,10 +1,3 @@
-"""Lightweight learned candidate reranker.
-
-The normal fusion module is still responsible for generating interpretable
-candidate scores. This module is an optional second-stage calibration layer
-trained from testA candidate diagnostics.
-"""
-
 from __future__ import annotations
 
 import json
@@ -159,7 +152,6 @@ def candidate_feature_vector(
 
 @dataclass
 class LearnedReranker:
-    """Apply a ridge-regression candidate quality model."""
 
     coefficients: np.ndarray
     mean: np.ndarray
@@ -316,7 +308,6 @@ class LearnedReranker:
         if not rows:
             return []
         x = np.array(rows, dtype=np.float64)
-        # Bias is intentionally not standardized.
         x_norm = x.copy()
         x_norm[:, 1:] = (x[:, 1:] - self.mean[1:]) / self.scale[1:]
         return [float(v) for v in x_norm @ self.coefficients]

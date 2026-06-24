@@ -1,11 +1,3 @@
-"""CLIP-backed learned beauty preference judge for crop candidates.
-
-The regular fusion stack scores interpretable signals. This module is the
-subjective second-stage judge: it looks at the crop image, the crop in full
-image context, and the existing candidate diagnostics, then applies a learned
-pairwise preference model.
-"""
-
 from __future__ import annotations
 
 import json
@@ -63,7 +55,6 @@ PIXEL_FEATURE_NAMES = [
 
 
 def _legacy_feature_vector(candidate: CandidateResult) -> list[float]:
-    """Feature schema used by the older non-visual beauty_judge model."""
     sub = candidate.sub_scores
     boundary_clean = 1.0 - float(np.clip(sub.boundary_cut, 0.0, 1.0))
     artifact_mix = float(
@@ -248,7 +239,6 @@ def _pixel_features(image: np.ndarray, bbox: BBox) -> list[float]:
 
 @dataclass
 class BeautyFeatureExtractor:
-    """Build visual and structured features for learned beauty ranking."""
 
     clip_model: str = "ViT-B/32"
     device: str = "cuda"
@@ -366,7 +356,6 @@ class BeautyFeatureExtractor:
 
 
 class BeautyJudge:
-    """Learned beauty scoring head over visual and candidate signals."""
 
     def __init__(
         self,

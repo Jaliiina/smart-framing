@@ -1,5 +1,4 @@
 # Content from https://raw.githubusercontent.com/xuebinqin/U-2-Net/master/model/u2net.py
-# Modified to fix deprecated F.upsample → F.interpolate and add U2Net/U2NetP aliases
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,11 +16,9 @@ class REBNCONV(nn.Module):
 
 
 def _upsample_like(src, tar):
-    # Fixed: use F.interpolate instead of deprecated F.upsample
     return F.interpolate(src, size=tar.shape[2:], mode="bilinear", align_corners=False)
 
 
-### RSU-7 ###
 class RSU7(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
         super(RSU7, self).__init__()
@@ -72,8 +69,6 @@ class RSU7(nn.Module):
         hx1d = self.rebnconv1d(torch.cat((hx2dup, hx1), 1))
         return hx1d + hxin
 
-
-### RSU-6 ###
 class RSU6(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
         super(RSU6, self).__init__()
@@ -120,7 +115,6 @@ class RSU6(nn.Module):
         return hx1d + hxin
 
 
-### RSU-5 ###
 class RSU5(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
         super(RSU5, self).__init__()
@@ -158,7 +152,6 @@ class RSU5(nn.Module):
         return hx1d + hxin
 
 
-### RSU-4 ###
 class RSU4(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
         super(RSU4, self).__init__()
@@ -189,7 +182,6 @@ class RSU4(nn.Module):
         return hx1d + hxin
 
 
-### RSU-4F ###
 class RSU4F(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
         super(RSU4F, self).__init__()
@@ -214,7 +206,6 @@ class RSU4F(nn.Module):
         return hx1d + hxin
 
 
-##### U^2-Net ####
 class U2NET(nn.Module):
     def __init__(self, in_ch=3, out_ch=1):
         super(U2NET, self).__init__()
@@ -281,7 +272,6 @@ class U2NET(nn.Module):
         return d0, d1, d2, d3, d4, d5, d6
 
 
-### U^2-Net small ###
 class U2NETP(nn.Module):
     def __init__(self, in_ch=3, out_ch=1):
         super(U2NETP, self).__init__()
@@ -347,6 +337,5 @@ class U2NETP(nn.Module):
         return d0, d1, d2, d3, d4, d5, d6
 
 
-# Aliases for compatibility with saliency_detector.py import names
 U2Net = U2NET
 U2NetP = U2NETP

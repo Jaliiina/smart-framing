@@ -1,9 +1,3 @@
-"""Photography composition rule scoring: rule of thirds, center balance,
-whitespace, edge simplicity, symmetry.
-Fixed: Universal landscape panorama support, no hard-coded sample bias,
-solve local high-saturation object over-scoring & sky under-scoring.
-"""
-
 from __future__ import annotations
 
 import math
@@ -16,10 +10,7 @@ from .utils import BBox, bbox_center
 
 
 class CompositionScorer:
-    """Score candidates based on photography composition rules.
-    Universal fixed version: auto distinguish landscape / plant / portrait / normal scene.
-    Fix core bug: composition prefers small high-saturation foreground objects over panoramic scenery.
-    """
+
     def __init__(self, config: dict):
         ccfg = config.get("composition", {})
         w = ccfg.get("weights", {})
@@ -46,9 +37,7 @@ class CompositionScorer:
         scores = []
         for bbox in bboxes:
             sub = self._score_single(image, bbox, saliency_map, detected_objects)
-            # Dynamic weight adjustment for landscape panorama (core fix)
             if sub.get("is_landscape", False):
-                # Landscape: weaken local-object rule-of-thirds, strengthen global balance
                 total = (
                     self.weight_thirds * 0.35 * sub["thirds"]
                     + self.weight_balance * 1.8 * sub["center_balance"]
@@ -58,7 +47,6 @@ class CompositionScorer:
                     + self.weight_person * sub["person_completeness"]
                 )
             else:
-                # Keep original weight for portrait/plant/object scene
                 total = (
                     self.weight_thirds * sub["thirds"]
                     + self.weight_balance * sub["center_balance"]
@@ -101,12 +89,10 @@ class CompositionScorer:
         gaze_ws = self._gaze_whitespace(image, bbox, detected_objects)
         horizon = self._horizon_level(image, bbox)
 
-        # Universal landscape panorama detection (no sample bias)
         is_landscape_scene = self._is_wide_landscape(crop)
         if is_landscape_scene:
             whitespace = self._whitespace_landscape(crop)
 
-        # Plant-friendly mode (original logic reserved)
         is_plant = self._is_plant_texture(crop)
         if is_plant:
             whitespace = self._whitespace_plant(crop)
@@ -125,24 +111,18 @@ class CompositionScorer:
         }
 
     def _is_wide_landscape(self, crop: np.ndarray) -> bool:
-        """Universal landscape detector: judge by sky feature (low saturation + high brightness).
-        No hard-coded position/color, pure scene attribute judgment.
-        """
+
         h, w = crop.shape[:2]
         if h < 60 or w < 60:
             return False
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
         H, S, V = cv2.split(hsv)
-        # Sky characteristic: low saturation, high lightness
         sky_mask = ((S < 60) & (V > 160)).astype(np.float32)
         sky_ratio = sky_mask.mean()
-        # Scene with large sky area is panorama landscape
         return sky_ratio > 0.4
 
     def _whitespace_landscape(self, crop: np.ndarray) -> float:
-        """Landscape-specific whitespace score: allow large sky empty area.
-        Only penalize completely flat/featureless empty frames.
-        """
+
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         gray_std = float(gray.std() / 255.0)
         if gray_std < 0.03:
@@ -246,22 +226,22 @@ class CompositionScorer:
         strip = max(3, min(h, w) // 80)
         boundary_edge_count = 0
         boundary_pixel_count = 0
-        # Top strip
+        # Top
         ry1, ry2 = max(0, y1 - strip), max(0, y1 + strip)
         if ry2 > ry1:
             boundary_edge_count += edges[ry1:ry2, max(0, x1):x2].sum()
             boundary_pixel_count += (ry2 - ry1) * (x2 - x1)
-        # Bottom strip
+        # Bottom
         ry1, ry2 = max(0, y2 - strip), min(h, y2 + strip)
         if ry2 > ry1:
             boundary_edge_count += edges[ry1:ry2, max(0, x1):x2].sum()
             boundary_pixel_count += (ry2 - ry1) * (x2 - x1)
-        # Left strip
+        # Left
         rx1, rx2 = max(0, x1 - strip), max(0, x1 + strip)
         if rx2 > rx1:
             boundary_edge_count += edges[y1:y2, rx1:rx2].sum()
             boundary_pixel_count += (y2 - y1) * (rx2 - rx1)
-        # Right strip
+        # Right
         rx1, rx2 = max(0, x2 - strip), min(w, x2 + strip)
         if rx2 > rx1:
             boundary_edge_count += edges[y1:y2, rx1:rx2].sum()
@@ -281,7 +261,6 @@ class CompositionScorer:
             scale = 128 / max(h, w)
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)))
         h2, w2 = gray.shape[:2]
-        # Left-right symmetry
         mid_x = w2 // 2
         left = gray[:, :mid_x]
         right = gray[:, w2 - mid_x:][:, ::-1]
@@ -289,7 +268,6 @@ class CompositionScorer:
         if left.shape == right.shape:
             lr_diff = np.abs(left - right).mean() / 255.0
             lr_sym = 1.0 - lr_diff
-        # Top-bottom symmetry
         mid_y = h2 // 2
         top = gray[:mid_y, :]
         bottom = gray[h2 - mid_y:, :][::-1, :]

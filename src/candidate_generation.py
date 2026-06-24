@@ -1,5 +1,3 @@
-"""GAIC-style grid anchor candidate generation + saliency-guided supplement."""
-
 from __future__ import annotations
 
 import math
@@ -12,8 +10,6 @@ from .utils import BBox, DetectedObject, bbox_area, bbox_aspect_ratio, clamp_bbo
 
 
 class CandidateGenerator:
-    """Generate candidate cropping boxes using GAIC-style grid anchors
-    with optional saliency-guided supplementary candidates."""
 
     def __init__(self, config: dict):
         cg = config.get("candidate_generation", {})
@@ -40,38 +36,23 @@ class CandidateGenerator:
         saliency_map: Optional[np.ndarray] = None,
         detected_objects: Optional[List[DetectedObject]] = None,
     ) -> List[BBox]:
-        """Generate candidate bboxes for the given image.
-
-        Args:
-            image: BGR image (H, W, 3).
-            saliency_map: Optional saliency map (H, W) in [0, 1].
-                If provided and self.saliency_supplement is True,
-                additional candidates are generated at saliency peaks.
-
-        Returns:
-            List of BBox tuples, filtered and NMS-deduped, up to top_k.
-        """
+       
         h, w = image.shape[:2]
         img_area = h * w
 
-        # --- GAIC-style grid anchor generation ---
         candidates = self._grid_anchors(h, w, img_area)
 
-        # --- Saliency-guided supplement ---
         if self.saliency_supplement and saliency_map is not None:
             sal_candidates = self._saliency_guided_candidates(saliency_map, h, w, img_area)
             candidates.extend(sal_candidates)
 
-        # --- Subject-guided supplement ---
         if detected_objects:
             candidates.extend(
                 self._object_guided_candidates(detected_objects, h, w, img_area)
             )
 
-        # --- Filtering ---
         filtered = self._filter_candidates(candidates, h, w, img_area)
 
-        # --- NMS dedup ---
         if len(filtered) > 0:
             scores = [
                 self._prefilter_score(b, img_area, saliency_map)
@@ -80,7 +61,6 @@ class CandidateGenerator:
             keep = nms(filtered, scores, self.nms_iou_threshold)
             filtered = [filtered[i] for i in keep]
 
-        # --- Keep top-K ---
         if len(filtered) > self.top_k:
             filtered = filtered[:self.top_k]
 
@@ -136,7 +116,6 @@ class CandidateGenerator:
         img_area: int,
         saliency_map: Optional[np.ndarray],
     ) -> float:
-        """Score candidates for NMS so medium, content-dense boxes survive."""
         area_ratio = float(bbox_area(bbox)) / max(1, img_area)
         scale_prior = self._scale_prior(area_ratio)
 
@@ -154,10 +133,8 @@ class CandidateGenerator:
         return 0.45 * coverage + 0.35 * density + 0.20 * scale_prior
 
     def _grid_anchors(self, h: int, w: int, img_area: int) -> List[BBox]:
-        """Generate GAIC-style grid anchor candidates with dense center sampling."""
         candidates: List[BBox] = []
 
-        # Grid centers (evenly spaced, including near-edges)
         gx = np.linspace(0.05, 0.95, self.grid_size + 2, dtype=float)[1:-1]
         gy = np.linspace(0.05, 0.95, self.grid_size + 2, dtype=float)[1:-1]
 
@@ -184,18 +161,15 @@ class CandidateGenerator:
         """Generate additional candidates centered at saliency peaks."""
         candidates: List[BBox] = []
 
-        # Smooth the saliency map
         smoothed = cv2.GaussianBlur(
             saliency_map.astype(np.float32),
             (0, 0),
             self.saliency_smooth_sigma,
         )
 
-        # Find local peaks by finding contours of high-response regions
         binary = (smoothed > self.saliency_peak_threshold * smoothed.max()).astype(np.uint8)
         contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Compute centroids of significant contours
         peaks = []
         for cnt in contours:
             if cv2.contourArea(cnt) < 100:
@@ -206,7 +180,6 @@ class CandidateGenerator:
                 cy = int(M["m01"] / M["m00"])
                 peaks.append((cx, cy))
 
-        # Fallback: use global saliency centroid if no peaks found
         if len(peaks) == 0:
             total = smoothed.sum()
             if total > 1e-6:
@@ -215,7 +188,6 @@ class CandidateGenerator:
                 cy = int((ys * smoothed).sum() / total)
                 peaks.append((cx, cy))
 
-        # Generate candidates around each peak
         aspect_ratios = self._active_aspect_ratios(h, w)
 
         for cx, cy in peaks:
@@ -233,7 +205,6 @@ class CandidateGenerator:
         w: int,
         img_area: int,
     ) -> List[BBox]:
-        """Generate candidates centered on individual objects and object groups."""
         centers: List[Tuple[float, float]] = []
         significant = []
         for obj in detected_objects:
@@ -268,20 +239,16 @@ class CandidateGenerator:
         w: int,
         img_area: int,
     ) -> List[BBox]:
-        """Filter candidates by area, aspect ratio, and validity."""
         filtered = []
         for bbox in candidates:
             area = bbox_area(bbox)
             area_ratio = area / max(1, img_area)
             ar = bbox_aspect_ratio(bbox)
 
-            # Area filter
             if area_ratio < self.min_area_ratio or area_ratio > self.max_area_ratio:
                 continue
-            # Aspect ratio filter
             if ar < self.min_aspect_ratio or ar > self.max_aspect_ratio:
                 continue
-            # Must be valid
             x1, y1, x2, y2 = bbox
             if x2 <= x1 or y2 <= y1:
                 continue
