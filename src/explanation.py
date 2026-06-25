@@ -1,28 +1,22 @@
-"""Template-based explanation generator for cropping results."""
 from __future__ import annotations
 from .utils import SubScores
-# 导入新增LLM解释器
 from .llm_crop_explainer import LLMCropExplainer
 import logging
 
 logger = logging.getLogger(__name__)
 
 class ExplanationGenerator:
-    """Generate short human-readable explanations for why a crop was selected."""
     def __init__(self, config: dict | None = None):
         self.config = config or {}
         self.llm_explainer = None
         llm_cfg = self.config.get("llm", {})
-        # 兼容两种配置 key：enable_llm_reason（旧）或 enabled（yaml 示例）
         enabled_flag = llm_cfg.get("enable_llm_reason", llm_cfg.get("enabled", False))
         if enabled_flag:
             self.llm_explainer = LLMCropExplainer(llm_cfg)
-        # 缓存正负向prompt
         aesthetic_cfg = self.config.get("models", {}).get("aesthetic", {})
         self.pos_prompts = aesthetic_cfg.get("positive_prompts", [])
         self.neg_prompts = aesthetic_cfg.get("negative_prompts", [])
 
-    # 原有旧模板生成逻辑（兜底降级）
     def _old_generate_short(self, sub_scores: SubScores, has_subject: bool = True) -> str:
         reasons = []
         if sub_scores.saliency >= 0.7:
@@ -62,7 +56,6 @@ class ExplanationGenerator:
         """原始接口：仅返回短文案（兼容旧逻辑）"""
         return self._old_generate_short(sub_scores, has_subject)
 
-    # 新增核心方法：传入原图+裁剪图，调用LLM，失败自动降级
     def generate_with_image(
         self,
         origin_image,
@@ -71,12 +64,7 @@ class ExplanationGenerator:
         detected_objects,
         has_subject: bool = True
     ) -> tuple[str, str]:
-        """
-        返回 (short_reason, full_report_reason)
-        short: 前端TOP5卡片展示
-        full: 导出报告详细分析
-        """
-        # 无LLM实例直接降级
+
         if self.llm_explainer is None:
             short_text = self._old_generate_short(sub_scores, has_subject)
             return short_text, short_text
@@ -89,7 +77,6 @@ class ExplanationGenerator:
                 pos_prompts=self.pos_prompts,
                 neg_prompts=self.neg_prompts
             )
-            # 校验返回内容，为空则降级
             if not short or not full:
                 raise ValueError("LLM返回文案为空")
             return short, full
@@ -103,7 +90,6 @@ class ExplanationGenerator:
         sub_scores: SubScores,
         has_subject: bool = True,
     ) -> str:
-        """Generate a short English explanation."""
         reasons = []
         if sub_scores.saliency >= 0.7:
             reasons.append("salient content is preserved")

@@ -1,5 +1,3 @@
-"""YOLOv8 object detection wrapper for subject completeness scoring."""
-
 from __future__ import annotations
 
 import logging
@@ -8,7 +6,6 @@ import os
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-# Fix ultralytics settings permission issue: set YOLO_SETTINGS_DIR before import
 _yolo_settings_dir = str(Path.home() / ".config" / "ultralytics")
 os.makedirs(_yolo_settings_dir, exist_ok=True)
 os.environ.setdefault("YOLO_SETTINGS_DIR", _yolo_settings_dir)
@@ -22,25 +19,22 @@ logger = logging.getLogger(__name__)
 
 
 class SubjectDetector:
-    """Detect objects using YOLOv8 and compute subject completeness scores."""
-    # Class-specific minimum sizes (height in pixels)
     CLASS_MIN_SIZES = {
-        0: 50,   # person - should be prominent
-        45: 40,  # wine glass 高脚杯最小像素约束，防止小酒杯漏检过滤
-        15: 30, 16: 30, 17: 30, 18: 30,  # cat, dog, horse, sheep
-        19: 30, 20: 30, 21: 30, 22: 30, 23: 30,  # cow, elephant, bear, zebra, giraffe
-        1: 40, 2: 40, 3: 40, 4: 40, 5: 40, 6: 40, 7: 40, 8: 40, 9: 40,  # vehicles
-        24: 25, 25: 25, 26: 25, 27: 25, 28: 25, 29: 25, 30: 25, 31: 25, 32: 25, 33: 25,  # umbrella, handbag, etc.
-        44: 20, 46: 20, 47: 20, 48: 20, 49: 20,  # bottle, cup, fork, knife, spoon
-        50: 20, 51: 20, 52: 20, 53: 20, 54: 20, 55: 20,  # bowl, banana, apple, sandwich, orange, broccoli
-        56: 20, 57: 20,  # carrot, hot dog (common food/product subjects)
+        0: 50,   
+        45: 40,  
+        15: 30, 16: 30, 17: 30, 18: 30,  
+        19: 30, 20: 30, 21: 30, 22: 30, 23: 30,  
+        1: 40, 2: 40, 3: 40, 4: 40, 5: 40, 6: 40, 7: 40, 8: 40, 9: 40,  
+        24: 25, 25: 25, 26: 25, 27: 25, 28: 25, 29: 25, 30: 25, 31: 25, 32: 25, 33: 25,  
+        44: 20, 46: 20, 47: 20, 48: 20, 49: 20,  
+        50: 20, 51: 20, 52: 20, 53: 20, 54: 20, 55: 20,  
+        56: 20, 57: 20,  
     }
-    # Class-specific aspect ratio (width/height) sanity ranges
     CLASS_ASPECT_RANGES = {
-        0: (0.15, 1.5),   # person - typically tall (w/h ~ 0.3-0.5 standing)
-        15: (0.5, 2.0), 16: (0.5, 2.0), 17: (0.5, 2.0), 18: (0.5, 2.0),  # quadruped animals
+        0: (0.15, 1.5),  
+        15: (0.5, 2.0), 16: (0.5, 2.0), 17: (0.5, 2.0), 18: (0.5, 2.0),  
         19: (0.6, 2.0), 20: (0.5, 2.0), 21: (0.5, 2.0), 22: (0.5, 2.0), 23: (0.5, 2.0),
-        1: (0.8, 3.0), 2: (0.8, 3.0), 3: (0.8, 3.0), 4: (0.8, 3.0), 5: (0.8, 3.0),  # vehicles
+        1: (0.8, 3.0), 2: (0.8, 3.0), 3: (0.8, 3.0), 4: (0.8, 3.0), 5: (0.8, 3.0),  
         6: (0.8, 3.0), 7: (0.8, 3.0), 8: (0.8, 3.0), 9: (0.8, 3.0),
     }
 
@@ -52,12 +46,12 @@ class SubjectDetector:
         self.important_classes: List[int] = ycfg.get(
             "important_classes",
             [
-                0, 1, 2, 3, 4, 5, 7, 9,   # person, bicycle, car, motorcycle, airplane, bus, truck, train
-                15, 16, 17, 18, 19,       # cat, dog, horse, sheep, cow
-                20, 21, 22, 23,           # elephant, bear, zebra, giraffe
-                44, 45, 46, 47, 48, 49,  # bottle, wine glass, cup, fork, knife, spoon
-                50, 51, 52, 53, 54, 55,  # bowl, banana, apple, sandwich, orange, broccoli
-                56, 57,                   # carrot, hot dog (common food/product subjects)
+                0, 1, 2, 3, 4, 5, 7, 9,   
+                15, 16, 17, 18, 19,       
+                20, 21, 22, 23,           
+                44, 45, 46, 47, 48, 49,  
+                50, 51, 52, 53, 54, 55,  
+                56, 57,                   
             ],
         )
         scfg = config.get("subject", {})
@@ -84,8 +78,7 @@ class SubjectDetector:
             )
         )
         self.avoid_distractors: bool = scfg.get("avoid_distractors", True)
-        # Discard tiny detections that are almost certainly false positives
-        # (e.g. YOLO often mis-classifies grass/rocks as giraffes ~20px tall).
+
         self.min_object_size: int = scfg.get("min_object_size_px", 25)
 
         self._model = None
@@ -93,11 +86,10 @@ class SubjectDetector:
         self.last_score_mode = "none"
 
     def _load_model(self):
-        """Lazily load YOLOv8 model."""
         if self._model_loaded:
             return
         try:
-            from ultralytics import YOLO  # type: ignore
+            from ultralytics import YOLO  
 
             self._model = YOLO(self.model_name)
             logger.info(f"YOLOv8 model loaded: {self.model_name}")
@@ -108,15 +100,7 @@ class SubjectDetector:
         self._model_loaded = True
 
     def detect(self, image: np.ndarray, saliency_map: Optional[np.ndarray] = None) -> List[DetectedObject]:
-        """Run object detection on the full image.
 
-        Args:
-            image: BGR image (H, W, 3).
-            saliency_map: Optional saliency map for filtering false positives.
-
-        Returns:
-            List of DetectedObject instances.
-        """
         self._load_model()
         if self._model is None:
             return []
@@ -178,7 +162,6 @@ class SubjectDetector:
                     )
                 )
 
-        # 修复：删除尺寸分组粗暴去重，改用IoU-NMS仅删除高度重叠重复框，保留多人/多同类物体
         final_objects = []
         used_idx = set()
         total_obj = len(objects)
@@ -190,7 +173,6 @@ class SubjectDetector:
             x1a, y1a, x2a, y2a = obj_a.bbox
             area_a = (x2a - x1a) * (y2a - y1a)
 
-            # 和后续同类别物体计算IoU，重叠>0.6判定为重复
             for idx_b in range(idx_a + 1, total_obj):
                 obj_b = objects[idx_b]
                 if obj_a.class_id != obj_b.class_id or idx_b in used_idx:
@@ -206,7 +188,6 @@ class SubjectDetector:
                 iou = inter_area / max(1, union_area)
 
                 if iou > 0.6:
-                    # 保留置信度更高的物体
                     if obj_b.confidence > obj_a.confidence:
                         keep_flag = False
                         break
@@ -259,26 +240,17 @@ class SubjectDetector:
         detected_objects: List[DetectedObject],
         image_shape: Tuple[int, int],
     ) -> List[Optional[float]]:
-        """Compute subject completeness score for each candidate bbox.
-        Fixed critical bugs:
-        1. Removed duplicate double boundary penalty
-        2. Removed final max normalization which erased completeness gap
-        3. Fixed panorama bonus: only reward full complete scene frames, reduce bonus strength
-        4. Fixed object weight calculation, small important objects no longer suppressed
-        Strictly enforce min_important_inclusion threshold for person/wine glass core subjects
-        """
+
         if len(detected_objects) == 0:
             self.last_score_mode = "none"
             return [None] * len(bboxes)
 
-        # Filter to important objects only, exclude face fallback proxies
         important_objects = [
             obj
             for obj in detected_objects
             if obj.class_id in self.important_classes and obj.class_name != "face_person_proxy"
         ]
         if len(important_objects) == 0:
-            # Fallback: medium confidence objects if no core important targets
             important_objects = [
                 obj
                 for obj in detected_objects
@@ -300,7 +272,6 @@ class SubjectDetector:
         img_area = img_h * img_w
         obj_weights = []
         for obj in important_objects:
-            # Fix: remove global image area attenuation, small subjects get normal weight
             w = obj.confidence
             obj_weights.append(w)
         total_weight = sum(obj_weights) + 1e-9
@@ -331,7 +302,6 @@ class SubjectDetector:
             penalty = min(0.3, (1.0 - boundary_penalty / total_weight) ** 2 * 0.5)
             score = min(1.0, max(0.0, raw_score - penalty + self.tightness_weight * tightness))
 
-            # Fixed panorama bonus: only add small bonus when all main subjects are fully included
             crop_area = bbox_area(bbox)
             area_ratio = crop_area / img_area
             avg_inclusion = weighted_inclusion / total_weight
@@ -345,7 +315,6 @@ class SubjectDetector:
 
             per_candidate_scores.append(score)
 
-        # Critical Fix: delete max normalization, retain raw 0~1 score gap of completeness
         return per_candidate_scores
 
     def _score_distractor_avoidance(
@@ -393,12 +362,7 @@ class SubjectDetector:
         obj: DetectedObject,
         image_shape: Tuple[int, int],
     ) -> bool:
-        """Decide whether a non-core detection may act as the main subject.
 
-        Small food/sports/foreground objects are often accidental distractors in
-        TestB. They should not force the crop to include them unless configured
-        as important classes.
-        """
         if obj.class_name == "face_person_proxy" or obj.confidence < 0.4:
             return False
 

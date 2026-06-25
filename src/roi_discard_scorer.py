@@ -1,11 +1,3 @@
-"""ROI/discard-region scoring for scientific crop selection.
-
-This module follows the same spirit as grid-anchor image cropping methods:
-each candidate is evaluated by what it keeps inside the region of interest
-(ROI), what it discards outside the crop, and whether the crop boundary cuts
-through salient structures. No scene-specific object or color rule is used.
-"""
-
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
@@ -18,7 +10,6 @@ from .subjectness_scorer import SubjectnessMaps
 
 
 class RoiDiscardScorer:
-    """Score candidates by ROI preservation and discard-region quality."""
 
     def __init__(self, config: dict):
         cfg = config.get("roi_discard", {})
@@ -170,8 +161,6 @@ class RoiDiscardScorer:
             (x1, y1, x2, y2), detected_objects, image_area
         )
 
-        # If a crop has strong structure exactly on its boundary, treat it as
-        # a possible subject cut even when saliency coverage is high.
         if crop_edges.size > 0:
             edge_density = float((crop_edges > 0.35).mean())
             boundary_cut = float(np.clip(boundary_cut + 0.12 * edge_density, 0.0, 1.0))

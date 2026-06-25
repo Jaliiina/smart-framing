@@ -1,10 +1,3 @@
-"""Open-vocabulary semantic scoring for crop candidates.
-
-The scorer uses CLIP prompts to separate aesthetic subjects from visually
-salient but undesirable foreground clutter. It is generic: prompts describe
-scene/quality concepts rather than individual test images.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -20,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class SemanticCropScorer:
-    """Score crops with positive/negative CLIP prompt groups."""
 
     def __init__(self, config: dict):
         cfg = config.get("semantic_crop", {})
@@ -90,6 +82,20 @@ class SemanticCropScorer:
         except Exception as exc:
             logger.warning(f"Semantic CLIP scorer unavailable: {exc}")
         self._loaded = True
+
+    def set_positive_prompts(self, prompts: List[str]) -> None:
+        self.positive_prompts = list(prompts)
+        if not self._loaded:
+            return
+        if self._clip is None or self._model is None:
+            return
+        try:
+            with torch.no_grad():
+                pos_tokens = self._clip.tokenize(self.positive_prompts).to(self.device)
+                pos = self._model.encode_text(pos_tokens).float()
+            self._pos = pos / pos.norm(dim=-1, keepdim=True)
+        except Exception as exc:
+            logger.warning(f"Failed to refresh semantic positive prompts: {exc}")
 
     def score_candidates(
         self,
@@ -166,11 +172,7 @@ class SemanticCropScorer:
         return scores
 
     def _context_positive_indices(self, image: np.ndarray) -> torch.Tensor:
-        """Select positive prompts that match the whole image context.
 
-        A global context pass prevents a candidate from winning only because it
-        matches an unrelated generic prompt such as architecture or flat color.
-        """
         from PIL import Image
 
         if self._model is None or self._preprocess is None or self._pos is None:

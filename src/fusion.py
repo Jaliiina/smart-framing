@@ -1,5 +1,3 @@
-"""Normalized weighted fusion with fallback strategies."""
-
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
@@ -10,7 +8,6 @@ from .utils import BBox, CandidateResult, SubScores, minmax_normalize
 
 
 class FusionModule:
-    """Fuse multi-dimensional scores with normalization and fallback strategies."""
 
     def __init__(self, config: dict):
         fcfg = config.get("fusion", {})
@@ -44,7 +41,6 @@ class FusionModule:
         self.low_score_threshold: float = fcfg.get("low_score_threshold", 0.3)
         self.top_k_display: int = fcfg.get("top_k_display", 3)
 
-        # Dual saliency agreement detection
         self.dual_saliency_agreement_threshold: float = fcfg.get(
             "dual_saliency_agreement_threshold", 0.65
         )
@@ -52,23 +48,18 @@ class FusionModule:
             "dual_saliency_weight_reduction", 0.10
         )
 
-        # Stage 1 边界惩罚配置
+        #边界惩罚配置
         self._filter_config: dict = fcfg.get("stage1_filter", {})
         self._filter_config.setdefault("boundary_threshold", 0.25)
         self._filter_config.setdefault("boundary_penalty_strength", 0.15)
 
-        # High-saliency coverage bonus: boost candidates that contain a lot of salient pixels
         self._saliency_bonus_weight: float = fcfg.get("saliency_coverage_bonus_weight", 0.15)
         self._saliency_bonus_threshold: float = fcfg.get("saliency_coverage_threshold", 0.5)
 
-        # Edge-adjacency penalty: penalize candidates that hug image boundaries
         self._edge_penalty_enabled: bool = fcfg.get("edge_adjacency_penalty_enabled", True)
         self._edge_penalty_threshold: float = fcfg.get("edge_adjacency_penalty_threshold", 0.04)
         self._edge_penalty_strength: float = fcfg.get("edge_adjacency_penalty_strength", 0.20)
 
-        # When saliency is concentrated at bottom (e.g. grass/ground),
-        # give a bonus to candidates whose saliency center-of-mass is higher (toward sky).
-        # This prevents bottom-texture (grass, ground) from hijacking the crop for sky scenes.
         self._saliency_vertical_bias_enabled: bool = fcfg.get("saliency_vertical_bias_enabled", True)
         self._saliency_vertical_bias_strength: float = fcfg.get("saliency_vertical_bias_strength", 0.12)
         robust_cfg = fcfg.get("robust_rank_fusion", {})
@@ -115,22 +106,6 @@ class FusionModule:
         subject_source: str = "yolo",
         dual_saliency_scores: Optional[List[float]] = None,
     ) -> Tuple[CandidateResult, List[CandidateResult], Optional[List[CandidateResult]]]:
-        """Fuse all sub-scores and select the best candidate.
-
-        Args:
-            bboxes: List of candidate bboxes.
-            aesthetic_scores: Raw aesthetic scores per candidate.
-            saliency_scores: Saliency preservation scores per candidate.
-            composition_scores: (total, sub_dict) per candidate.
-            subject_scores: Subject completeness scores per candidate (None = no objects).
-            technical_scores: (total, sub_dict) per candidate.
-            saliency_is_uniform: If True, saliency map was too uniform.
-            has_subject: If True, at least some objects were detected.
-            saliency_map: (H, W) saliency map for Stage 1 hard filtering.
-
-        Returns:
-            (best_candidate, top_k_candidates, all_candidates_or_None)
-        """
         n = len(bboxes)
         if n == 0:
             raise ValueError("No candidates to fuse.")
@@ -138,34 +113,26 @@ class FusionModule:
         import logging
         _stage1_logger = logging.getLogger("fusion.stage1")
 
-        # --- Compute edge-adjacency penalty (penalize candidates hugging image boundaries) ---
         edge_penalty = np.zeros(n)
         if saliency_map is not None and self._edge_penalty_enabled and image_shape is not None:
             h, w = image_shape[:2]
             for i, bbox in enumerate(bboxes):
                 x1, y1, x2, y2 = bbox
-                # Fractional distance from each edge to image boundary (0 = touching, 1 = far)
                 left_dist_pct = x1 / max(1, w)
                 top_dist_pct = y1 / max(1, h)
                 right_dist_pct = (w - x2) / max(1, w)
                 bottom_dist_pct = (h - y2) / max(1, h)
-                # Any edge within threshold fraction of boundary → penalty
                 for dist_pct in [left_dist_pct, top_dist_pct, right_dist_pct, bottom_dist_pct]:
                     if dist_pct < self._edge_penalty_threshold:
                         strength = self._edge_penalty_strength * (1.0 - dist_pct / self._edge_penalty_threshold)
                         edge_penalty[i] = max(edge_penalty[i], strength)
 
-        # --- Compute saliency vertical-COM bias ---
-        # When saliency is concentrated at the bottom (e.g. ground/grass in landscape photos),
-        # give a bonus to candidates whose internal saliency COM is higher (toward sky).
         vertical_bias = np.zeros(n)
         if saliency_map is not None and self._saliency_vertical_bias_enabled and image_shape is not None:
             h, w = image_shape[:2]
-            # Overall saliency COM (Y coordinate as fraction of height)
             total_sal = float(saliency_map.sum()) + 1e-9
             ys_full, xs_full = np.mgrid[0:h, 0:w]
             overall_com_y_pct = float((ys_full * saliency_map).sum()) / total_sal / h
-            # If overall saliency is bottom-heavy (COM in lower 60%), apply bias
             if overall_com_y_pct > 0.40:
                 for i, bbox in enumerate(bboxes):
                     x1, y1, x2, y2 = bbox
@@ -175,25 +142,21 @@ class FusionModule:
                         local_h, local_w = region.shape[:2]
                         ys_local = np.mgrid[0:local_h, 0:local_w][0]
                         local_com_y_pct = float((ys_local * region).sum()) / reg_sum / max(1, local_h)
-                        # Bonus for crops whose internal saliency is higher in the crop.
-                        # local_com_y_pct is 0 at the top and 1 at the bottom.
                         vertical_bias[i] = self._saliency_vertical_bias_strength * (
                             1.0 - local_com_y_pct
                         )
 
-        # --- Compute boundary penalty (soft penalty for edge contamination) ---
         boundary_penalty = np.zeros(n)
         if saliency_map is not None and saliency_is_uniform is False:
             boundary_th = self._filter_config.get("boundary_threshold", 0.25)
             for i, bbox in enumerate(bboxes):
                 boundary_sal = self._compute_boundary_saliency(bbox, saliency_map)
-                # 线性惩罚：超过阈值越多，扣分越多
+                # 线性惩罚
                 if boundary_sal > boundary_th:
                     penalty_strength = self._filter_config.get("boundary_penalty_strength", 0.15)
                     exceed_ratio = min(1.0, (boundary_sal - boundary_th) / (boundary_th * 2))
                     boundary_penalty[i] = penalty_strength * exceed_ratio
 
-        # --- Determine active weights ---
         w_aesthetic = self.weight_aesthetic
         w_saliency = self.weight_saliency
         w_composition = self.weight_composition
@@ -205,20 +168,14 @@ class FusionModule:
         w_subjectness = self.weight_subjectness
         w_artifact = self.weight_artifact_avoidance
 
-        # Fallback: if saliency is uniform, reduce its weight
         if saliency_is_uniform:
             w_saliency -= self.saliency_uniform_reduction
             w_aesthetic += self.saliency_uniform_reduction * 0.5
             w_composition += self.saliency_uniform_reduction * 0.5
 
-        # If no meaningful subject was detected, exclude that dimension.
-        # The remaining active weights are normalized below. Avoid transferring
-        # subject weight to saliency because low-level saliency can overvalue
-        # textured ground, debris, or other high-contrast distractions.
         if not has_subject:
             w_subject = 0.0
 
-        # Normalize weights to sum to 1
         total_w = (
             w_aesthetic
             + w_saliency
@@ -243,7 +200,6 @@ class FusionModule:
             w_subjectness /= total_w
             w_artifact /= total_w
 
-        # --- Normalize each score dimension per-image ---
         norm_aesthetic = minmax_normalize(np.array(aesthetic_scores, dtype=np.float64))
         norm_saliency = minmax_normalize(np.array(saliency_scores, dtype=np.float64))
         comp_totals = np.array([s[0] for s in composition_scores], dtype=np.float64)
@@ -275,7 +231,6 @@ class FusionModule:
         subjectness_totals = np.array([s[0] for s in subjectness_scores], dtype=np.float64)
         norm_subjectness = minmax_normalize(subjectness_totals)
 
-        # Subject scores: handle None
         subject_arr = np.array(
             [s if s is not None else 0.0 for s in subject_scores],
             dtype=np.float64,
@@ -285,7 +240,6 @@ class FusionModule:
         else:
             norm_subject = np.zeros(n)
 
-        # --- Weighted fusion ---
         final_scores = (
             w_aesthetic * norm_aesthetic
             + w_saliency * norm_saliency
@@ -326,7 +280,6 @@ class FusionModule:
                 ),
             )
 
-        # Apply vertical bias, edge-adjacency and boundary penalties
         final_scores = final_scores + vertical_bias - edge_penalty - boundary_penalty
 
         if self.area_target_penalty_weight > 0 and image_shape is not None:
@@ -341,7 +294,6 @@ class FusionModule:
         if self.score_clip_enabled:
             final_scores = np.clip(final_scores, 0.0, 1.0)
 
-        # --- Build results ---
         candidates = []
         for i in range(n):
             sub = SubScores(
@@ -351,7 +303,6 @@ class FusionModule:
                 subject=float(norm_subject[i]) if has_subject else 0.0,
                 technical=float(norm_technical[i]),
                 area_prior=float(area_prior[i]),
-                # Detailed breakdown
                 thirds=composition_scores[i][1].get("thirds", 0.0),
                 center_balance=composition_scores[i][1].get("center_balance", 0.0),
                 whitespace=composition_scores[i][1].get("whitespace", 0.0),
@@ -361,7 +312,6 @@ class FusionModule:
                 brightness=technical_scores[i][1].get("brightness", 0.0),
                 contrast=technical_scores[i][1].get("contrast", 0.0),
                 saturation=technical_scores[i][1].get("saturation", 0.0),
-                # Person & composition enhancement
                 person_completeness=composition_scores[i][1].get("person_completeness", 0.5),
                 roi_discard=float(norm_roi_discard[i]),
                 roi_saliency=roi_discard_scores[i][1].get("roi_saliency", 0.0),
@@ -394,14 +344,11 @@ class FusionModule:
                 )
             )
 
-        # Sort by final score descending
         candidates.sort(key=lambda c: c.final_score, reverse=True)
 
         best = candidates[0]
 
-        # Fallback: if best score too low, consider a conservative large-area crop
         if best.final_score < self.low_score_threshold:
-            # Find the candidate with the largest area
             largest = max(candidates, key=lambda c: (c.bbox[2] - c.bbox[0]) * (c.bbox[3] - c.bbox[1]))
             if largest.final_score > best.final_score * 0.8:
                 best = largest
@@ -415,7 +362,7 @@ class FusionModule:
             subject_source=subject_source,
         )
 
-        # Top-K for display
+        # Top-K
         top_k = [best]
         for cand in candidates:
             if cand != best:
@@ -452,13 +399,7 @@ class FusionModule:
         bad_discard: np.ndarray,
         negative_semantic: np.ndarray,
     ) -> np.ndarray:
-        """Blend weighted scores with rank aggregation and veto penalties.
 
-        This makes the selector less sensitive to one overconfident model. A
-        candidate should rank reasonably across composition, semantic intent,
-        subjectness, and ROI/discard, while high artifact/boundary/negative
-        evidence acts as a soft veto.
-        """
         dimensions = {
             "aesthetic": norm_aesthetic,
             "composition": norm_composition,
@@ -514,15 +455,6 @@ class FusionModule:
         return max(0.0, 0.65 - 0.65 * (area_ratio - self.large_penalty_start) / span)
 
     def _compute_boundary_saliency(self, bbox: BBox, saliency_map: np.ndarray) -> float:
-        """计算框边缘的saliency均值，越低说明切得越干净。
-
-        Args:
-            bbox: (x1, y1, x2, y2)
-            saliency_map: (H, W) saliency map
-
-        Returns:
-            边缘strip的平均saliency值，越低越好
-        """
         x1, y1, x2, y2 = bbox
         h, w = saliency_map.shape[:2]
 
@@ -553,19 +485,14 @@ class FusionModule:
     def _compute_rank_agreement(
         scores_a: List[float], scores_b: List[float]
     ) -> float:
-        """Compute normalized rank correlation (Spearman) without scipy.
 
-        Returns value in [0, 1] where 1 = perfect agreement.
-        """
         n = len(scores_a)
         if n < 2:
             return 0.0
         a = np.array(scores_a, dtype=np.float64)
         b = np.array(scores_b, dtype=np.float64)
-        # Handle ties by averaging ranks
         rank_a = _rank_data(a)
         rank_b = _rank_data(b)
-        # Pearson on ranks ≈ Spearman
         da = rank_a - rank_a.mean()
         db = rank_b - rank_b.mean()
         num = float((da * db).sum())
@@ -583,16 +510,6 @@ class FusionModule:
         saliency_map: np.ndarray,
         threshold: Optional[float] = None,
     ) -> float:
-        """计算高阈值覆盖率（saliency > threshold 的像素占比）。
-
-        Args:
-            bbox: (x1, y1, x2, y2)
-            saliency_map: (H, W) saliency map
-            threshold: 高阈值，默认从配置读取
-
-        Returns:
-            高阈值覆盖率（框内高saliency像素占比），越高越好
-        """
         if threshold is None:
             threshold = self._filter_config.get("high_saliency_threshold", 0.5)
 
@@ -645,7 +562,6 @@ class FusionModule:
         image_shape: Optional[Tuple[int, int]],
         subject_source: str = "subject",
     ) -> Optional[CandidateResult]:
-        """Prefer a slightly wider, complete crop when scores are very close."""
         if not has_subject or subject_source != "subject":
             return None
 
@@ -677,17 +593,7 @@ class FusionModule:
         score_fn,
         weight_ranges: Optional[Dict] = None,
     ) -> Dict[str, float]:
-        """Grid search for optimal fusion weights on a validation set.
-
-        Args:
-            bboxes_list: List of candidate bbox lists per image.
-            gt_bboxes: Ground truth bboxes.
-            score_fn: Function that takes (bboxes, weights) -> (best_bbox, ...).
-            weight_ranges: Optional dict of weight ranges to search.
-
-        Returns:
-            Best weight configuration.
-        """
+        
         from .utils import bbox_iou
 
         if weight_ranges is None:
@@ -702,7 +608,6 @@ class FusionModule:
         best_weights = None
         best_miou = -1.0
 
-        # Generate all combinations
         import itertools
 
         keys = list(weight_ranges.keys())
@@ -710,13 +615,11 @@ class FusionModule:
 
         for combo in itertools.product(*value_lists):
             weights = dict(zip(keys, combo))
-            # Normalize to sum to 1
             total = sum(weights.values())
             if total < 1e-9:
                 continue
             weights = {k: v / total for k, v in weights.items()}
 
-            # Evaluate
             ious = []
             for i, (cands, gt) in enumerate(zip(bboxes_list, gt_bboxes)):
                 pred_bbox, _ = score_fn(cands, weights)
@@ -731,7 +634,6 @@ class FusionModule:
 
 
 def _rank_percentile(values: np.ndarray) -> np.ndarray:
-    """Return percentile ranks in [0, 1], where larger input is better."""
     values = np.asarray(values, dtype=np.float64)
     n = len(values)
     if n == 0:
@@ -745,5 +647,4 @@ def _rank_percentile(values: np.ndarray) -> np.ndarray:
 
 
 def _rank_data(values: np.ndarray) -> np.ndarray:
-    """Rank helper used by Spearman agreement; ties are handled stably."""
     return _rank_percentile(values)

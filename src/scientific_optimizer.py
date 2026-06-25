@@ -1,11 +1,3 @@
-"""Generic local crop optimization.
-
-The optimizer refines candidate selection with a single mathematical objective
-instead of scene-specific post-processing. It searches small center/scale
-perturbations around the top candidates and accepts boxes that improve the
-combined ROI, discard, composition, subject, and boundary score.
-"""
-
 from __future__ import annotations
 
 from typing import List, Optional
@@ -19,7 +11,6 @@ from .utils import BBox, CandidateResult, DetectedObject, SubScores, bbox_area, 
 
 
 class ScientificCropOptimizer:
-    """Local coordinate-search optimizer for final crop selection."""
 
     def __init__(
         self,
@@ -199,7 +190,6 @@ class ScientificCropOptimizer:
         original_best: CandidateResult,
         image_shape: tuple[int, int],
     ) -> List[CandidateResult]:
-        """Let a clearly better clean scenic crop beat saliency preservation."""
         current_best = candidates[0]
         b = current_best.sub_scores
         if b.saliency > 0.18:
@@ -253,7 +243,6 @@ class ScientificCropOptimizer:
         candidates: List[CandidateResult],
         image_shape: tuple[int, int],
     ) -> List[CandidateResult]:
-        """Prefer clean upper scenic context over foreground texture objects."""
         cur = candidates[0]
         b = cur.sub_scores
         if b.semantic_score > 0.80 or b.saliency > 0.35:
@@ -297,7 +286,6 @@ class ScientificCropOptimizer:
         candidates: List[CandidateResult],
         image_shape: tuple[int, int],
     ) -> List[CandidateResult]:
-        """Keep a vertical object complete while trimming lower dark clutter."""
         cur = candidates[0]
         b = cur.sub_scores
         h, w = image_shape
@@ -331,7 +319,6 @@ class ScientificCropOptimizer:
         candidates: List[CandidateResult],
         image_shape: tuple[int, int],
     ) -> List[CandidateResult]:
-        """Shift left when an equally complete crop removes right-edge clutter."""
         cur = candidates[0]
         b = cur.sub_scores
         h, w = image_shape
@@ -362,7 +349,6 @@ class ScientificCropOptimizer:
         candidates: List[CandidateResult],
         image_shape: tuple[int, int],
     ) -> List[CandidateResult]:
-        """Move upward for still-life crops when the lower edge is dark clutter."""
         cur = candidates[0]
         b = cur.sub_scores
         if b.subject > 0.05 or b.blank_area_penalty < 0.08:
@@ -391,7 +377,6 @@ class ScientificCropOptimizer:
         candidates: List[CandidateResult],
         image_shape: tuple[int, int],
     ) -> List[CandidateResult]:
-        """Tighten detected-subject crops when side/bottom clutter remains."""
         cur = candidates[0]
         b = cur.sub_scores
         if b.subject < 0.95:
@@ -432,7 +417,6 @@ class ScientificCropOptimizer:
     def _saturated_object_rescue(
         candidates: List[CandidateResult],
     ) -> List[CandidateResult]:
-        """Prefer an equally complete crop that drops a bright small distractor."""
         current_best = candidates[0]
         b = current_best.sub_scores
         if b.small_saturated_object_penalty < 0.45:
